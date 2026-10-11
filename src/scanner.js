@@ -37,8 +37,8 @@ function probe(host, port, timeoutMs, signal) {
     };
     const abort = () => finish(null, new Error('Scan cancelled.'));
     const timer = setTimeout(() => finish({ port, state: 'unknown', reason: 'timeout' }), timeoutMs);
-    timer.unref?.();
     signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) return abort();
     socket.once('connect', () => finish({ port, state: 'open', reason: 'tcp-connect' }));
     socket.once('error', error => finish({ port, state: 'unknown', reason: error.code ?? 'network-error' }));
     try { socket.connect({ host, port }); } catch (error) { finish(null, error); }
