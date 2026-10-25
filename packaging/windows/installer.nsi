@@ -1,7 +1,7 @@
 Unicode True
 
 !ifndef VERSION
-  !define VERSION "1.1.0"
+  !define VERSION "1.2.0"
 !endif
 !ifndef CLI_BIN
   !define CLI_BIN "..\..\dist\sentinel-net-windows-amd64.exe"

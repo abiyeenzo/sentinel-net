@@ -17,8 +17,10 @@ import (
 
 	"github.com/abiyeenzo/sentinel-net/internal/inspector"
 	"github.com/abiyeenzo/sentinel-net/internal/netscope"
+	"github.com/abiyeenzo/sentinel-net/internal/osint"
 	"github.com/abiyeenzo/sentinel-net/internal/risk"
 	"github.com/abiyeenzo/sentinel-net/internal/services"
+	"github.com/abiyeenzo/sentinel-net/internal/vuln"
 )
 
 const (
@@ -35,13 +37,15 @@ type DialFunc func(ctx context.Context, network, address string) (net.Conn, erro
 
 // Observation describes the outcome of probing one TCP port on one target.
 type Observation struct {
-	Port       int                  `json:"port"`
-	State      string               `json:"state"`
-	Reason     string               `json:"reason"`
-	LatencyMs  float64              `json:"latencyMs"`
-	Attempts   int                  `json:"attempts"`
-	Service    services.ServiceInfo `json:"service"`
-	Inspection *inspector.Result    `json:"inspection,omitempty"`
+	Port            int                  `json:"port"`
+	State           string               `json:"state"`
+	Reason          string               `json:"reason"`
+	LatencyMs       float64              `json:"latencyMs"`
+	Attempts        int                  `json:"attempts"`
+	Service         services.ServiceInfo `json:"service"`
+	Inspection      *inspector.Result    `json:"inspection,omitempty"`
+	Components      []vuln.Component     `json:"components,omitempty"`
+	Vulnerabilities []vuln.AdvisoryMatch `json:"vulnerabilities,omitempty"`
 }
 
 // ProgressEvent is emitted after each port completes.
@@ -85,14 +89,16 @@ type HostRiskBrief struct {
 
 // HostReport contains all observations and posture metrics for one scanned IP.
 type HostReport struct {
-	Target       string        `json:"target"`
-	Hostname     string        `json:"hostname,omitempty"`
-	Scope        string        `json:"scope"`
-	DurationMs   float64       `json:"durationMs"`
-	Counts       PortCounts    `json:"counts"`
-	Latency      LatencyStats  `json:"latency"`
-	Risk         HostRiskBrief `json:"risk"`
-	Observations []Observation `json:"observations"`
+	Target               string        `json:"target"`
+	Hostname             string        `json:"hostname,omitempty"`
+	Scope                string        `json:"scope"`
+	DurationMs           float64       `json:"durationMs"`
+	Counts               PortCounts    `json:"counts"`
+	Latency              LatencyStats  `json:"latency"`
+	Risk                 HostRiskBrief `json:"risk"`
+	VulnerabilitiesCount int           `json:"vulnerabilitiesCount"`
+	OSINT                *osint.Report `json:"osint,omitempty"`
+	Observations         []Observation `json:"observations"`
 }
 
 // Summary aggregates metrics across all scanned hosts.
@@ -104,6 +110,7 @@ type Summary struct {
 	OpenPorts          int          `json:"openPorts"`
 	ClosedPorts        int          `json:"closedPorts"`
 	UnknownPorts       int          `json:"unknownPorts"`
+	Vulnerabilities    int          `json:"vulnerabilities"`
 	DurationMs         float64      `json:"durationMs"`
 	Latency            LatencyStats `json:"latency"`
 }
@@ -116,9 +123,12 @@ type ToolMeta struct {
 
 // InspectionFlags records which optional inspectors were active during the scan.
 type InspectionFlags struct {
-	Banner bool `json:"banner"`
-	TLS    bool `json:"tls"`
-	HTTP   bool `json:"http"`
+	Banner    bool `json:"banner"`
+	TLS       bool `json:"tls"`
+	HTTP      bool `json:"http"`
+	Vuln      bool `json:"vuln"`
+	CVEOnline bool `json:"cveOnline,omitempty"`
+	OSINT     bool `json:"osint,omitempty"`
 }
 
 // ConfigSnapshot records the scan configuration inside a report.
@@ -136,17 +146,20 @@ type ConfigSnapshot struct {
 
 // Report is the top-level serialized audit report produced by ScanNetwork.
 type Report struct {
-	SchemaVersion string           `json:"schemaVersion"`
-	Tool          ToolMeta         `json:"tool"`
-	StartedAt     string           `json:"startedAt"`
-	FinishedAt    string           `json:"finishedAt"`
-	Configuration ConfigSnapshot   `json:"configuration"`
-	Target        string           `json:"target,omitempty"`
-	Observations  []Observation    `json:"observations,omitempty"`
-	Summary       Summary          `json:"summary"`
-	Risk          risk.ScanSummary `json:"risk"`
-	Hosts         []HostReport     `json:"hosts"`
-	Drift         any              `json:"drift,omitempty"`
+	SchemaVersion   string               `json:"schemaVersion"`
+	Tool            ToolMeta             `json:"tool"`
+	StartedAt       string               `json:"startedAt"`
+	FinishedAt      string               `json:"finishedAt"`
+	Configuration   ConfigSnapshot       `json:"configuration"`
+	Target          string               `json:"target,omitempty"`
+	Observations    []Observation        `json:"observations,omitempty"`
+	Summary         Summary              `json:"summary"`
+	Risk            risk.ScanSummary     `json:"risk"`
+	VulnSummary     vuln.Summary         `json:"vulnSummary"`
+	Vulnerabilities []vuln.AdvisoryMatch `json:"vulnerabilities,omitempty"`
+	Hosts           []HostReport         `json:"hosts"`
+	OSINT           []*osint.Report      `json:"osint,omitempty"`
+	Drift           any                  `json:"drift,omitempty"`
 }
 
 // TCPOptions configures a single-host TCP scan.
@@ -162,6 +175,8 @@ type TCPOptions struct {
 	Banner      bool
 	TLS         bool
 	HTTP        bool
+	Vuln        bool
+	CVEOnline   bool
 	Dial        DialFunc
 	OnProgress  func(ProgressEvent)
 }
@@ -181,6 +196,9 @@ type NetworkOptions struct {
 	Banner          bool
 	TLS             bool
 	HTTP            bool
+	Vuln            bool
+	CVEOnline       bool
+	OSINT           bool
 	Dial            DialFunc
 	OnProgress      func(ProgressEvent)
 }
@@ -336,9 +354,9 @@ func ScanTCP(ctx context.Context, opts TCPOptions) ([]Observation, error) {
 		}
 	}
 
-	doBanner := opts.Inspect || opts.Banner
-	doTLS := opts.Inspect || opts.TLS
-	doHTTP := opts.Inspect || opts.HTTP
+	doBanner := opts.Inspect || opts.Banner || opts.Vuln
+	doTLS := opts.Inspect || opts.TLS || opts.Vuln
+	doHTTP := opts.Inspect || opts.HTTP || opts.Vuln
 
 	results := make([]Observation, len(opts.Ports))
 	var nextIdx atomic.Int64
@@ -428,6 +446,13 @@ func ScanTCP(ctx context.Context, opts TCPOptions) ([]Observation, error) {
 				}
 
 				obs.Service = services.Identify(port, clues)
+				if obs.State == "open" && obs.Inspection != nil {
+					obs.Components = vuln.ExtractComponents(obs.Service, obs.Inspection)
+					obs.Vulnerabilities = vuln.MatchPort(opts.Target, port, obs.Service, obs.Inspection)
+					if opts.CVEOnline && len(obs.Components) > 0 {
+						obs.Vulnerabilities = vuln.LookupOnlineNVD(ctx, opts.Target, port, obs.Service, obs.Inspection, obs.Vulnerabilities, vuln.OnlineOptions{})
+					}
+				}
 				results[idx] = obs
 
 				doneNow := int(completedCount.Add(1))
@@ -563,6 +588,8 @@ func ScanNetwork(ctx context.Context, opts NetworkOptions) (*Report, error) {
 					Banner:      opts.Banner,
 					TLS:         opts.TLS,
 					HTTP:        opts.HTTP,
+					Vuln:        opts.Vuln,
+					CVEOnline:   opts.CVEOnline,
 					Dial:        opts.Dial,
 					OnProgress: func(ev ProgressEvent) {
 						doneGlobal := int(globalCompleted.Add(1))
@@ -585,6 +612,7 @@ func ScanNetwork(ctx context.Context, opts NetworkOptions) (*Report, error) {
 				hDuration := roundMs(time.Since(hStart))
 				var counts PortCounts
 				counts.Total = len(obs)
+				vulnTotal := 0
 				portInputs := make([]risk.PortInput, 0, len(obs))
 				for _, o := range obs {
 					switch o.State {
@@ -595,6 +623,7 @@ func ScanNetwork(ctx context.Context, opts NetworkOptions) (*Report, error) {
 					default:
 						counts.Unknown++
 					}
+					vulnTotal += len(o.Vulnerabilities)
 					portInputs = append(portInputs, risk.PortInput{
 						Port:       o.Port,
 						State:      o.State,
@@ -625,7 +654,8 @@ func ScanNetwork(ctx context.Context, opts NetworkOptions) (*Report, error) {
 						Level:  hRisk.Level,
 						Counts: hRisk.Counts,
 					},
-					Observations: obs,
+					VulnerabilitiesCount: vulnTotal,
+					Observations:         obs,
 				}
 			}
 		}()
@@ -636,13 +666,38 @@ func ScanNetwork(ctx context.Context, opts NetworkOptions) (*Report, error) {
 		return nil, firstErr
 	}
 
+	if opts.OSINT {
+		osintCache := make(map[string]*osint.Report)
+		for i := range hostReports {
+			query := hostReports[i].Hostname
+			if query == "" {
+				query = hostReports[i].Target
+			}
+			if cached, ok := osintCache[query]; ok {
+				hostReports[i].OSINT = cached
+				continue
+			}
+			oRep, oErr := osint.Run(ctx, query, osint.Options{
+				Timeout:   5 * time.Second,
+				ActiveWeb: opts.Inspect || opts.HTTP,
+			})
+			if oErr == nil && oRep != nil {
+				osintCache[query] = oRep
+				hostReports[i].OSINT = oRep
+			}
+		}
+	}
+
 	finishedAt := time.Now().UTC()
 	durationMs := roundMs(finishedAt.Sub(startedAt))
 
 	allObs := make([]Observation, 0, totalProbes)
+	var allVulns []vuln.AdvisoryMatch
 	riskInputs := make([]risk.HostInput, 0, len(hostReports))
+	var osintList []*osint.Report
+	seenOSINT := make(map[*osint.Report]struct{})
 	hostsWithOpen := 0
-	openTotal, closedTotal, unknownTotal := 0, 0, 0
+	openTotal, closedTotal, unknownTotal, vulnGlobalTotal := 0, 0, 0, 0
 
 	for _, hr := range hostReports {
 		if hr.Counts.Open > 0 {
@@ -651,10 +706,20 @@ func ScanNetwork(ctx context.Context, opts NetworkOptions) (*Report, error) {
 		openTotal += hr.Counts.Open
 		closedTotal += hr.Counts.Closed
 		unknownTotal += hr.Counts.Unknown
+		vulnGlobalTotal += hr.VulnerabilitiesCount
+		if hr.OSINT != nil {
+			if _, ok := seenOSINT[hr.OSINT]; !ok {
+				seenOSINT[hr.OSINT] = struct{}{}
+				osintList = append(osintList, hr.OSINT)
+			}
+		}
 		allObs = append(allObs, hr.Observations...)
 
 		pInputs := make([]risk.PortInput, 0, len(hr.Observations))
 		for _, o := range hr.Observations {
+			if len(o.Vulnerabilities) > 0 {
+				allVulns = append(allVulns, o.Vulnerabilities...)
+			}
 			pInputs = append(pInputs, risk.PortInput{
 				Port:       o.Port,
 				State:      o.State,
@@ -687,9 +752,12 @@ func ScanNetwork(ctx context.Context, opts NetworkOptions) (*Report, error) {
 			Retries:         opts.Retries,
 			DelayMs:         int(opts.Delay / time.Millisecond),
 			Inspection: InspectionFlags{
-				Banner: opts.Inspect || opts.Banner,
-				TLS:    opts.Inspect || opts.TLS,
-				HTTP:   opts.Inspect || opts.HTTP,
+				Banner:    opts.Inspect || opts.Banner || opts.Vuln,
+				TLS:       opts.Inspect || opts.TLS || opts.Vuln,
+				HTTP:      opts.Inspect || opts.HTTP || opts.Vuln,
+				Vuln:      opts.Inspect || opts.Banner || opts.TLS || opts.HTTP || opts.Vuln,
+				CVEOnline: opts.CVEOnline,
+				OSINT:     opts.OSINT,
 			},
 		},
 		Summary: Summary{
@@ -700,11 +768,15 @@ func ScanNetwork(ctx context.Context, opts NetworkOptions) (*Report, error) {
 			OpenPorts:          openTotal,
 			ClosedPorts:        closedTotal,
 			UnknownPorts:       unknownTotal,
+			Vulnerabilities:    vulnGlobalTotal,
 			DurationMs:         durationMs,
 			Latency:            computeLatencyStats(allObs),
 		},
-		Risk:  risk.EvaluateScan(riskInputs),
-		Hosts: hostReports,
+		Risk:            risk.EvaluateScan(riskInputs),
+		VulnSummary:     vuln.Summarize(allVulns, opts.CVEOnline),
+		Vulnerabilities: allVulns,
+		Hosts:           hostReports,
+		OSINT:           osintList,
 	}
 
 	if len(hostReports) == 1 {

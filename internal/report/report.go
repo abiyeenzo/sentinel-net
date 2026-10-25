@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/abiyeenzo/sentinel-net/internal/baseline"
+	"github.com/abiyeenzo/sentinel-net/internal/osint"
 	"github.com/abiyeenzo/sentinel-net/internal/risk"
 	"github.com/abiyeenzo/sentinel-net/internal/scanner"
 )
@@ -239,6 +240,40 @@ func FormatTable(rep *scanner.Report, color, openOnly bool) string {
 		}
 	}
 
+	if len(rep.Vulnerabilities) > 0 {
+		b.WriteString(fmt.Sprintf("\n%s (%d)\n", c.bold("Vulnerabilites CVE et scope affecte"), len(rep.Vulnerabilities)))
+		b.WriteString(c.dim(sep) + "\n")
+		for _, v := range rep.Vulnerabilities {
+			tag := padRight(fmt.Sprintf("[%s %.1f]", strings.ToUpper(v.Severity), v.CVSS), 15)
+			switch v.Severity {
+			case "critical", "high":
+				tag = c.red(c.bold(tag))
+			case "medium":
+				tag = c.yellow(c.bold(tag))
+			default:
+				tag = c.blue(tag)
+			}
+			fixNote := ""
+			if v.FixedVersion != "" {
+				fixNote = fmt.Sprintf(" | Correctif : %s", v.FixedVersion)
+			}
+			b.WriteString(fmt.Sprintf("  %s %s sur %s:%d (%s %s) - %s\n",
+				tag, c.bold(v.CVE), c.cyan(v.Host), v.Port, v.Product, v.DetectedVersion, v.Title))
+			b.WriteString(fmt.Sprintf("                  Scope affecte : %s%s\n", v.AffectedScope, fixNote))
+			b.WriteString(fmt.Sprintf("                  Lien NVD      : %s\n", v.NVDURL))
+			b.WriteString(fmt.Sprintf("                  Lien CVE.org  : %s\n", v.CVEOrgURL))
+			if v.BackportCaveat != "" {
+				b.WriteString(fmt.Sprintf("                  Note          : %s\n", c.dim(v.BackportCaveat)))
+			}
+		}
+	}
+
+	if len(rep.OSINT) > 0 {
+		for _, o := range rep.OSINT {
+			b.WriteString(FormatOSINTTable(o, color))
+		}
+	}
+
 	if d := extractDrift(rep); d != nil {
 		b.WriteString(fmt.Sprintf("\n%s\n", c.bold("Comparaison baseline (drift)")))
 		b.WriteString(c.dim(sep) + "\n")
@@ -286,6 +321,7 @@ func FormatSARIF(rep *scanner.Report) (string, error) {
 		Name                 string         `json:"name"`
 		ShortDescription     textObj        `json:"shortDescription"`
 		Help                 textObj        `json:"help"`
+		HelpURI              string         `json:"helpUri,omitempty"`
 		DefaultConfiguration sarifConfig    `json:"defaultConfiguration"`
 		Properties           map[string]any `json:"properties"`
 	}
@@ -329,7 +365,12 @@ func FormatSARIF(rep *scanner.Report) (string, error) {
 		})
 	}
 
-	results := make([]sarifResult, 0, len(rep.Risk.Findings))
+	seenRuleIDs := make(map[string]struct{}, len(sarifRules))
+	for _, sr := range sarifRules {
+		seenRuleIDs[sr.ID] = struct{}{}
+	}
+
+	results := make([]sarifResult, 0, len(rep.Risk.Findings)+len(rep.Vulnerabilities))
 	for _, f := range rep.Risk.Findings {
 		lvl, _ := levelFor(f.Severity)
 		results = append(results, sarifResult{
@@ -361,6 +402,54 @@ func FormatSARIF(rep *scanner.Report) (string, error) {
 				"severity":          f.Severity,
 				"confidence":        f.Confidence,
 				"falsePositiveNote": f.FalsePositiveNote,
+			},
+		})
+	}
+
+	for _, v := range rep.Vulnerabilities {
+		lvl, _ := levelFor(v.Severity)
+		if _, exists := seenRuleIDs[v.CVE]; !exists {
+			seenRuleIDs[v.CVE] = struct{}{}
+			sarifRules = append(sarifRules, sarifRule{
+				ID:               v.CVE,
+				Name:             v.Product,
+				ShortDescription: textObj{Text: v.Title},
+				Help:             textObj{Text: fmt.Sprintf("Scope: %s. %s (%s)", v.AffectedScope, v.Remediation, v.NVDURL)},
+				HelpURI:          v.NVDURL,
+				DefaultConfiguration: sarifConfig{
+					Level: lvl,
+				},
+				Properties: map[string]any{
+					"tags":              []string{"security", "vulnerability", "cve", v.Severity},
+					"security-severity": fmt.Sprintf("%.1f", v.CVSS),
+				},
+			})
+		}
+		results = append(results, sarifResult{
+			RuleID: v.CVE,
+			Level:  lvl,
+			Message: textObj{
+				Text: fmt.Sprintf("%s (%s %s, scope affecte: %s) - %s [%s]",
+					v.Title, v.Product, v.DetectedVersion, v.AffectedScope, v.Remediation, v.NVDURL),
+			},
+			Locations: []map[string]any{
+				{
+					"physicalLocation": map[string]any{
+						"artifactLocation": map[string]any{
+							"uri": fmt.Sprintf("tcp://%s:%d", v.Host, v.Port),
+						},
+					},
+				},
+			},
+			Properties: map[string]any{
+				"host":          v.Host,
+				"port":          v.Port,
+				"cve":           v.CVE,
+				"cvss":          v.CVSS,
+				"affectedScope": v.AffectedScope,
+				"fixedVersion":  v.FixedVersion,
+				"nvdUrl":        v.NVDURL,
+				"cveOrgUrl":     v.CVEOrgURL,
 			},
 		})
 	}
@@ -446,6 +535,27 @@ func FormatMarkdown(rep *scanner.Report) string {
 			rem := strings.ReplaceAll(f.Remediation, "|", "\\|")
 			b.WriteString(fmt.Sprintf("| **%s** | `%s` | `%s:%d` | %s (%s) | %s |\n",
 				strings.ToUpper(f.Severity), f.RuleID, f.Host, f.Port, f.Title, ev, rem))
+		}
+	}
+
+	if len(rep.Vulnerabilities) > 0 {
+		b.WriteString("\n## Vulnerabilites CVE et scope affecte\n\n")
+		b.WriteString("| CVE | CVSS | Cible | Composant | Scope affecte | Correctif | Liens officiels |\n|---|---|---|---|---|---|---|\n")
+		for _, v := range rep.Vulnerabilities {
+			sc := strings.ReplaceAll(v.AffectedScope, "|", "\\|")
+			fix := v.FixedVersion
+			if fix == "" {
+				fix = "voir avis"
+			}
+			b.WriteString(fmt.Sprintf("| **[%s](%s)** | **%.1f** (%s) | `%s:%d` | %s `%s` | `%s` | `%s` | [NVD](%s) / [CVE.org](%s) |\n",
+				v.CVE, v.NVDURL, v.CVSS, strings.ToUpper(v.Severity),
+				v.Host, v.Port, v.Product, v.DetectedVersion, sc, fix, v.NVDURL, v.CVEOrgURL))
+		}
+	}
+
+	if len(rep.OSINT) > 0 {
+		for _, o := range rep.OSINT {
+			b.WriteString("\n" + FormatOSINTMarkdown(o))
 		}
 	}
 
@@ -605,6 +715,52 @@ func FormatHTML(rep *scanner.Report) string {
 		findingsHTML.WriteString(`<div class="ok-box">Aucun constat de risque critique, eleve, moyen ou faible sur le perimetre analyse.</div>`)
 	}
 
+	var vulnsHTML strings.Builder
+	if len(rep.Vulnerabilities) == 0 {
+		vulnsHTML.WriteString(`<div class="ok-box">Aucune vulnerabilite CVE connue correlee sur les versions de services detectees.</div>`)
+	} else {
+		for _, v := range rep.Vulnerabilities {
+			sevEsc := html.EscapeString(v.Severity)
+			var refLinks strings.Builder
+			for _, ref := range v.References {
+				refLinks.WriteString(fmt.Sprintf(`<a class="cve-link" href="%s" target="_blank" rel="noopener noreferrer">%s</a> `,
+					html.EscapeString(ref.URL), html.EscapeString(ref.Label)))
+			}
+			fixStr := ""
+			if v.FixedVersion != "" {
+				fixStr = fmt.Sprintf(` | <strong>Version corrigee :</strong> <span class="mono">%s</span>`, html.EscapeString(v.FixedVersion))
+			}
+			caveatHTML := ""
+			if v.BackportCaveat != "" {
+				caveatHTML = fmt.Sprintf(`<p class="muted">%s</p>`, html.EscapeString(v.BackportCaveat))
+			}
+			vulnsHTML.WriteString(fmt.Sprintf(`
+		<div class="finding sev-%s">
+			<div class="finding-head">
+				<span class="pill p-%s">%s (CVSS %.1f)</span>
+				<a class="mono target" href="%s" target="_blank" rel="noopener noreferrer">%s</a>
+				<span class="mono muted">%s:%d (%s %s)</span>
+				<strong>%s</strong>
+			</div>
+			<p><strong>Scope de vulnerabilite :</strong> <span class="mono">%s</span>%s</p>
+			<p>%s</p>
+			<p><strong>Remediation :</strong> %s</p>
+			<p><strong>Liens CVE :</strong> %s</p>
+			%s
+		</div>`,
+				sevEsc, sevEsc, html.EscapeString(strings.ToUpper(v.Severity)), v.CVSS,
+				html.EscapeString(v.NVDURL), html.EscapeString(v.CVE),
+				html.EscapeString(v.Host), v.Port, html.EscapeString(v.Product), html.EscapeString(v.DetectedVersion),
+				html.EscapeString(v.Title),
+				html.EscapeString(v.AffectedScope), fixStr,
+				html.EscapeString(v.Summary),
+				html.EscapeString(v.Remediation),
+				refLinks.String(),
+				caveatHTML,
+			))
+		}
+	}
+
 	avgRtt := "n/a"
 	p95Rtt := "n/a"
 	if s.Latency.AvgMs != nil {
@@ -655,7 +811,9 @@ func FormatHTML(rep *scanner.Report) string {
   .p-high { background:#f97316; color:#fff; }
   .p-medium { background:#f59e0b; color:#111827; }
   .p-low { background:#38bdf8; color:#0f172a; }
-  .target { color:var(--accent); font-weight:600; }
+  .target { color:var(--accent); font-weight:600; text-decoration:none; }
+  .cve-link { display:inline-block; margin-right:0.45rem; padding:0.15rem 0.55rem; border:1px solid var(--border); border-radius:4px; color:var(--accent); text-decoration:none; font-size:0.8rem; }
+  .cve-link:hover { border-color:var(--accent); }
   .ok-box { background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.35); color:#6ee7b7; padding:0.9rem 1rem; border-radius:8px; }
   footer { margin-top:2rem; border-top:1px solid var(--border); padding-top:1rem; font-size:0.8rem; color:var(--muted); }
   @media print { body { background:#fff; color:#111; padding:0; } .card, table, .finding { background:#fff; border-color:#ccc; } .toolbar { display:none; } }
@@ -676,6 +834,8 @@ func FormatHTML(rep *scanner.Report) string {
     <div class="card"><div class="card-label">Constats</div><div class="card-val">%d</div><div class="muted">Crit: %d | Eleve: %d | Moyen: %d</div></div>
     <div class="card"><div class="card-label">Latence RTT moy</div><div class="card-val">%s</div><div class="muted">P95 : %s</div></div>
   </section>
+  <h2>Vulnerabilites CVE et scope affecte (%d)</h2>
+  <section>%s</section>
   <h2>Constats et remediations</h2>
   <section>%s</section>
   <h2>Observations TCP</h2>
@@ -721,6 +881,7 @@ func FormatHTML(rep *scanner.Report) string {
 		s.OpenPorts, s.HostsWithOpenPorts, s.HostsScanned,
 		r.ActionableFindings, r.Counts.Critical, r.Counts.High, r.Counts.Medium,
 		html.EscapeString(avgRtt), html.EscapeString(p95Rtt),
+		len(rep.Vulnerabilities), vulnsHTML.String(),
 		findingsHTML.String(),
 		s.TotalProbes, s.OpenPorts, s.ClosedPorts, s.UnknownPorts,
 		rows.String(),
@@ -828,6 +989,44 @@ func FormatNmap(rep *scanner.Report, openOnly bool) string {
 					b.WriteString(hdrLine + "\n")
 				}
 			}
+
+			if len(o.Vulnerabilities) > 0 {
+				b.WriteString("| vulns:\n")
+				for i, v := range o.Vulnerabilities {
+					fixStr := ""
+					if v.FixedVersion != "" {
+						fixStr = fmt.Sprintf(" (fix: %s)", v.FixedVersion)
+					}
+					b.WriteString(fmt.Sprintf("|   %s [CVSS %.1f %s] - %s\n",
+						v.CVE, v.CVSS, strings.ToUpper(v.Severity), v.Title))
+					b.WriteString(fmt.Sprintf("|     Scope: %s%s\n", v.AffectedScope, fixStr))
+					b.WriteString(fmt.Sprintf("|     NVD:   %s\n", v.NVDURL))
+					lastPrefix := "|     "
+					if i == len(o.Vulnerabilities)-1 {
+						lastPrefix = "|_    "
+					}
+					b.WriteString(fmt.Sprintf("%sCVE:   %s\n", lastPrefix, v.CVEOrgURL))
+				}
+			}
+		}
+
+		if h.OSINT != nil {
+			if h.OSINT.GeoASN != nil && h.OSINT.GeoASN.ASN != "" {
+				b.WriteString(fmt.Sprintf("|_ osint-asn: %s (%s) %s %s\n",
+					h.OSINT.GeoASN.ASN, h.OSINT.GeoASN.Org, h.OSINT.GeoASN.City, h.OSINT.GeoASN.CountryCode))
+			}
+			if h.OSINT.RDAP != nil && (h.OSINT.RDAP.Registrar != "" || h.OSINT.RDAP.NetworkName != "") {
+				b.WriteString(fmt.Sprintf("|_ osint-rdap: registrar=%q net=%q country=%s\n",
+					h.OSINT.RDAP.Registrar, h.OSINT.RDAP.NetworkName, h.OSINT.RDAP.Country))
+			}
+			if h.OSINT.CTLogs != nil && len(h.OSINT.CTLogs.Subdomains) > 0 {
+				sample := h.OSINT.CTLogs.Subdomains
+				if len(sample) > 8 {
+					sample = sample[:8]
+				}
+				b.WriteString(fmt.Sprintf("|_ osint-ct-subdomains (%d total): %s\n",
+					len(h.OSINT.CTLogs.Subdomains), strings.Join(sample, ", ")))
+			}
 		}
 	}
 
@@ -875,5 +1074,146 @@ func Format(rep *scanner.Report, opts Options) (string, error) {
 		return FormatHTML(rep), nil
 	default:
 		return "", fmt.Errorf("unsupported format %q (expected: table, nmap, json, sarif, markdown, csv, html)", opts.Format)
+	}
+}
+
+// FormatOSINTTable renders a structured terminal report for an OSINT reconnaissance run.
+func FormatOSINTTable(rep *osint.Report, color bool) string {
+	if rep == nil {
+		return ""
+	}
+	c := ansiPalette{enabled: color}
+	sep := strings.Repeat("-", 84)
+	var b strings.Builder
+
+	b.WriteString(fmt.Sprintf("\n%s - Cible : %s (%s)\n", c.bold("RECONNAISSANCE OSINT"), c.cyan(c.bold(rep.Query)), rep.TargetType))
+	b.WriteString(c.dim(sep) + "\n")
+	if rep.Domain != "" {
+		b.WriteString(fmt.Sprintf("  Domaine       : %s (apex: %s)\n", rep.Domain, rep.ApexDomain))
+	}
+	if len(rep.IPs) > 0 {
+		b.WriteString(fmt.Sprintf("  Adresses IP   : %s [%s]\n", strings.Join(rep.IPs, ", "), rep.Scope))
+	}
+	if rep.GeoASN != nil {
+		b.WriteString(fmt.Sprintf("  ASN / FAI     : %s | %s (%s) | %s, %s (%s)\n",
+			rep.GeoASN.ASN, rep.GeoASN.Org, rep.GeoASN.ISP, rep.GeoASN.City, rep.GeoASN.Country, rep.GeoASN.CountryCode))
+	}
+	if rep.RDAP != nil {
+		if rep.RDAP.Registrar != "" || rep.RDAP.DomainName != "" {
+			b.WriteString(fmt.Sprintf("  RDAP Domaine  : registrar=%q | DNSSEC=%v\n", rep.RDAP.Registrar, rep.RDAP.DNSSECSigned))
+		}
+		if rep.RDAP.NetworkName != "" || rep.RDAP.IPRange != "" {
+			b.WriteString(fmt.Sprintf("  RDAP Reseau   : %s (%s) | Plage: %s | Abuse: %s\n",
+				rep.RDAP.NetworkName, rep.RDAP.NetworkHandle, rep.RDAP.IPRange, rep.RDAP.AbuseContact))
+		}
+	}
+	if rep.DNS != nil {
+		if len(rep.DNS.NS) > 0 {
+			b.WriteString(fmt.Sprintf("  Serveurs NS   : %s\n", strings.Join(rep.DNS.NS, ", ")))
+		}
+		if len(rep.DNS.MX) > 0 {
+			var mxs []string
+			for _, m := range rep.DNS.MX {
+				mxs = append(mxs, fmt.Sprintf("%s (pref %d)", m.Host, m.Pref))
+			}
+			b.WriteString(fmt.Sprintf("  Serveurs MX   : %s\n", strings.Join(mxs, ", ")))
+		}
+		if es := rep.DNS.EmailSecurity; es != nil && rep.ApexDomain != "" {
+			spf := "absent"
+			if !es.MissingSPF {
+				spf = es.SPFPolicy
+			}
+			dmarc := "absent"
+			if !es.MissingDMARC {
+				dmarc = es.DMARCPolicy
+			}
+			b.WriteString(fmt.Sprintf("  Anti-spoofing : SPF=%s | DMARC=%s\n", spf, dmarc))
+		}
+		if len(rep.DNS.DetectedProviders) > 0 {
+			b.WriteString(fmt.Sprintf("  Ecosyst. SaaS : %s\n", strings.Join(rep.DNS.DetectedProviders, ", ")))
+		}
+	}
+	if rep.CTLogs != nil {
+		b.WriteString(fmt.Sprintf("  Journaux CT   : %d certificat(s), %d sous-domaine(s) unique(s)\n",
+			rep.CTLogs.CertificatesCount, len(rep.CTLogs.Subdomains)))
+		if len(rep.CTLogs.Issuers) > 0 {
+			b.WriteString(fmt.Sprintf("  Autorites CA  : %s\n", strings.Join(rep.CTLogs.Issuers, ", ")))
+		}
+		if len(rep.CTLogs.Subdomains) > 0 {
+			maxShow := len(rep.CTLogs.Subdomains)
+			if maxShow > 20 {
+				maxShow = 20
+			}
+			b.WriteString(fmt.Sprintf("  Sous-domaines : %s\n", strings.Join(rep.CTLogs.Subdomains[:maxShow], ", ")))
+			if len(rep.CTLogs.Subdomains) > maxShow {
+				b.WriteString(fmt.Sprintf("                  (+%d autres sous-domaines en export JSON)\n", len(rep.CTLogs.Subdomains)-maxShow))
+			}
+		}
+	}
+	if rep.Web != nil {
+		b.WriteString(fmt.Sprintf("  Surface Web   : %s [HTTP %d] Titre=%q\n", rep.Web.URL, rep.Web.StatusCode, rep.Web.Title))
+		if len(rep.Web.Technologies) > 0 {
+			b.WriteString(fmt.Sprintf("  Technologies  : %s\n", strings.Join(rep.Web.Technologies, ", ")))
+		}
+		if rep.Web.SecurityTxt != nil && rep.Web.SecurityTxt.Found {
+			b.WriteString(fmt.Sprintf("  security.txt  : %s (contacts: %s)\n",
+				rep.Web.SecurityTxt.URL, strings.Join(rep.Web.SecurityTxt.Contacts, ", ")))
+		}
+	}
+	if len(rep.Observations) > 0 {
+		b.WriteString(fmt.Sprintf("\n  %s (%d)\n", c.bold("Observations d'hygiene OSINT"), len(rep.Observations)))
+		for _, obs := range rep.Observations {
+			b.WriteString(fmt.Sprintf("    [%s] %s (%s)\n", strings.ToUpper(obs.Severity), obs.Title, obs.Evidence))
+			b.WriteString(fmt.Sprintf("           -> %s\n", obs.Recommendation))
+		}
+	}
+	if len(rep.Warnings) > 0 {
+		b.WriteString(fmt.Sprintf("\n  %s : %s\n", c.dim("Notes sources"), c.dim(strings.Join(rep.Warnings, " | "))))
+	}
+	return b.String()
+}
+
+// FormatOSINTMarkdown renders an OSINT report in Markdown.
+func FormatOSINTMarkdown(rep *osint.Report) string {
+	if rep == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("## Reconnaissance OSINT : `%s`\n\n", rep.Query))
+	if rep.Domain != "" {
+		b.WriteString(fmt.Sprintf("- **Domaine :** `%s` (apex `%s`)\n", rep.Domain, rep.ApexDomain))
+	}
+	if len(rep.IPs) > 0 {
+		b.WriteString(fmt.Sprintf("- **IP :** `%s` (`%s`)\n", strings.Join(rep.IPs, "`, `"), rep.Scope))
+	}
+	if rep.GeoASN != nil && rep.GeoASN.ASN != "" {
+		b.WriteString(fmt.Sprintf("- **ASN / Operateur :** `%s` - %s (%s, %s)\n",
+			rep.GeoASN.ASN, rep.GeoASN.Org, rep.GeoASN.City, rep.GeoASN.Country))
+	}
+	if rep.RDAP != nil && rep.RDAP.Registrar != "" {
+		b.WriteString(fmt.Sprintf("- **Registrar RDAP :** %s (DNSSEC: `%v`)\n", rep.RDAP.Registrar, rep.RDAP.DNSSECSigned))
+	}
+	if rep.CTLogs != nil && len(rep.CTLogs.Subdomains) > 0 {
+		b.WriteString(fmt.Sprintf("- **Sous-domaines CT (%d) :** `%s`\n",
+			len(rep.CTLogs.Subdomains), strings.Join(rep.CTLogs.Subdomains, "`, `")))
+	}
+	return b.String()
+}
+
+// FormatOSINT serializes an OSINT report in table, markdown, or json format.
+func FormatOSINT(rep *osint.Report, opts Options) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(opts.Format)) {
+	case "", "table", "text", "nmap":
+		return FormatOSINTTable(rep, opts.Color) + "\n", nil
+	case "json":
+		raw, err := json.MarshalIndent(rep, "", "  ")
+		if err != nil {
+			return "", err
+		}
+		return string(raw) + "\n", nil
+	case "markdown", "md":
+		return FormatOSINTMarkdown(rep) + "\n", nil
+	default:
+		return "", fmt.Errorf("unsupported OSINT format %q (expected: table, json, markdown)", opts.Format)
 	}
 }

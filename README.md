@@ -10,9 +10,19 @@
   <a href="https://github.com/abiyeenzo/sentinel-net/releases/latest"><img src="https://img.shields.io/github/v/release/abiyeenzo/sentinel-net?label=Release" alt="Latest Release" /></a>
 </p>
 
-Scanner d'audit reseau defensif autonome ecrit en **Go** (bibliotheque standard uniquement, aucune dependance externe, aucun runtime a installer). Il combine une **interface graphique de bureau inspiree de Zenmap** et une **ligne de commande directe inspiree de Nmap**, sur **Windows**, **macOS** et **Linux**.
+Plateforme autonome d'audit reseau defensif, de **correlation de vulnerabilites CVE** et de **reconnaissance OSINT** ecrite en **Go** (bibliotheque standard uniquement, aucune dependance externe, aucun runtime a installer). Elle combine une **interface graphique de bureau inspiree de Zenmap** et une **ligne de commande directe inspiree de Nmap**, sur **Windows**, **macOS** et **Linux**.
 
-> **Usage responsable :** Sentinel Net emet du trafic TCP actif vers les cibles indiquees. Utilisez-le uniquement sur des equipements et reseaux dont vous avez la responsabilite ou une autorisation ecrite explicite (`-y` ou `--authorized`).
+> **Usage responsable :** tout scan actif exige une confirmation explicite d'autorisation (`-y` ou `--authorized`). N'auditez que des systemes et perimetres dont vous avez la responsabilite ou l'autorisation ecrite.
+
+---
+
+## Fonctionnalites principales
+
+- **Scan TCP multi-hotes rapide et deterministe** : IPv4, IPv6, sous-reseaux CIDR (`/22` a `/32`), plages d'IP, cadences `-T1` a `-T5` et profils metier (`quick`, `web`, `database`, `infra`, `containers`, `iot`, `top100`).
+- **Correlation CVE avec scope affecte et liens officiels (`--vuln`, `--script=vuln`, `--cve-online`)** : identification passive des versions logicielles (CPE 2.3), affichage du **perimetre exact des versions vulnerables** (ex. `>= 8.5p1, < 9.8p1`), de la **version corrigee**, des reserves de retroportage Linux et des **liens directs cliquables vers NIST NVD, CVE.org et l'avis editeur** (catalogue hors-ligne integre + enrichissement optionnel en direct via l'API NIST NVD v2.0).
+- **Suite complete de reconnaissance OSINT (`sentinel-net osint`, `--osint`)** : collecte parallele DNS (`A`, `AAAA`, `CNAME`, `MX`, `NS`, `TXT`, `PTR`), controle anti-spoofing **SPF / DMARC**, detection de l'ecosysteme SaaS/Cloud, decouverte passive de sous-domaines via les journaux de transparence des certificats **`crt.sh`**, attribution **RDAP / WHOIS** (registrar, DNSSEC, bloc IP, contact abuse), **ASN BGP** et inspection optionnelle `security.txt` (RFC 9116) / `robots.txt`.
+- **Interface graphique de bureau (style Zenmap)** : binaire GUI dedie sous Windows sans fenetre console, bundle `.app` Cocoa `WKWebView` universel sous macOS, paquet `.deb` sous Linux, avec sept onglets (`Sortie Nmap`, `Ports / Hotes`, `Vulnerabilites & CVE`, `OSINT & Recon`, `Topologie`, `Risques & Drift`, `Guide CLI`).
+- **Suivi d'integrite et rapports multi-formats (`-oA`)** : baselines signees SHA-256 (`--save-baseline`, `--compare`, `--fail-on-drift`) et exports Nmap `.txt`, `JSON`, `HTML` autonome, `SARIF 2.1.0`, `Markdown` et `CSV`.
 
 ---
 
@@ -32,7 +42,7 @@ irm https://raw.githubusercontent.com/abiyeenzo/sentinel-net/main/scripts/instal
 
 ### macOS (Apple Silicon & Intel)
 
-1. **Application native macOS (`Sentinel-Net-macOS-universal.dmg`)** : glissez `Sentinel Net.app` dans `Applications` et ouvrez-la comme n'importe quelle application macOS (fenetre Cocoa `WKWebView` universelle `arm64` + `x86_64`).
+1. **Application native macOS (`Sentinel-Net-macOS-universal.dmg`)** : glissez `Sentinel Net.app` dans `Applications` et ouvrez-la directement (fenetre Cocoa `WKWebView` universelle `arm64` + `x86_64`).
 2. **Installation CLI en une ligne** :
 
 ```bash
@@ -41,10 +51,10 @@ curl -fsSL https://raw.githubusercontent.com/abiyeenzo/sentinel-net/main/scripts
 
 ### Linux (Debian / Ubuntu / Kali & binaires statiques)
 
-1. **Paquet bureau & CLI `.deb` (`sentinel-net_1.1.0_amd64.deb` ou `arm64.deb`)** :
+1. **Paquet bureau & CLI `.deb` (`sentinel-net_1.2.0_amd64.deb` ou `arm64.deb`)** :
 
 ```bash
-sudo apt install ./sentinel-net_1.1.0_amd64.deb
+sudo apt install ./sentinel-net_1.2.0_amd64.deb
 ```
 
 2. **Installation rapide toutes distributions** :
@@ -63,62 +73,46 @@ Lancez l'application depuis son icone Bureau / Applications, ou via la commande 
 sentinel-net gui
 ```
 
-L'interface graphique regroupe :
-- **Barre de commande synchronisee** : choix de la cible, du profil (`Scan rapide (-F)`, `Audit complet (-A)`, `Web`, `Bases de donnees`, `Infrastructure`, `IoT`), de la cadence (`-T1` a `-T5`) et apercu modifiable de la commande exacte.
-- **Arbre lateral Hotes / Services / Interfaces** : filtrage en un clic par machine decouverte, par service ouvert ou selection directe de vos sous-reseaux locaux `/24`.
-- **Cinq vues complementaires** : **Sortie Nmap**, **Ports / Hotes**, **Topologie** (carte radiale interactive SVG), **Risques & Details** (score `/100`, certificats TLS X.509, en-tetes HTTP, comparaison baseline) et **Guide CLI**.
-
 ---
 
-## Commandes simples en terminal (style Nmap)
+## Commandes rapides en terminal (style Nmap + OSINT)
 
 Consultez le **[Guide complet des commandes (`docs/CLI.md`)](docs/CLI.md)** pour toutes les options et equivalences Nmap.
 
 ```bash
-# Scan standard des 95 ports courants sur un hote
-sentinel-net 192.168.1.1 -y
+# Reconnaissance OSINT passive d'un domaine ou d'une IP publique (DNS, SPF/DMARC, crt.sh, RDAP, ASN)
+sentinel-net osint exemple.com
 
-# Scan rapide des 18 ports critiques (-F)
-sentinel-net -F 192.168.1.1 -y
+# Audit de vulnerabilites CVE avec scope des versions affectees et liens NVD / CVE.org
+sentinel-net -sV --vuln 192.168.1.10 -y
+
+# Audit complet tout-en-un : services + TLS X.509 + HTTP + CVE + enrichissement OSINT
+sentinel-net -A --osint -R exemple.com -y
 
 # Scanner un sous-reseau /24 rapidement (-T4) et n'afficher que les ports ouverts (--open)
 sentinel-net -F -T4 --open 192.168.1.0/24 -y
 
-# Detection des services et bannieres sur des ports precis (-sV -p)
-sentinel-net -sV -p 22,80,443,3306,5432 10.0.0.5 -y
-
-# Audit complet tout-en-un : banniere + certificat TLS X.509 + en-tetes HTTP (-A)
-sentinel-net -A 10.0.0.5 -y
-
-# Profil metier cible (quick, web, database, infra, containers, iot, top100)
-sentinel-net -P database -sV 10.0.0.1-30 -y
-
 # Generer tous les formats d'un coup : .txt (Nmap), .json, .html et .sarif (-oA)
-sentinel-net -A 192.168.1.10 -oA rapport-audit -y
+sentinel-net -A --vuln 192.168.1.10 -oA rapport-audit -y
 
-# Enregistrer une baseline signee SHA-256 puis controler toute derive d'ouverture
-sentinel-net -F 10.0.0.5 --save-baseline base.json -y
-sentinel-net -F 10.0.0.5 --compare base.json --fail-on-drift -y
+# Controler en CI qu'aucune CVE ou exposition >= high n'est presente (code retour 3 sinon)
+sentinel-net -A --vuln 10.0.0.5 --fail-on-severity high -y
 ```
 
 ### Raccourcis essentiels
 
-| Option | Role |
+| Option / Commande | Role |
 |---|---|
-| `-y`, `--authorized` | Confirme l'autorisation explicite d'auditer la cible (obligatoire) |
+| `osint <cible>` | Reconnaissance OSINT passive (`DNS`, `SPF/DMARC`, `crt.sh`, `RDAP`, `ASN`) |
+| `--vuln`, `--script=vuln` | Correlation CVE passive avec scope affecte, correctif et liens NVD / CVE.org |
+| `--cve-online` | Enrichissement CVE en direct via l'API officielle NIST NVD v2.0 (CPE) |
+| `--osint` | Ajoute automatiquement la collecte OSINT aux hotes scannes |
+| `-y`, `--authorized` | Confirme l'autorisation explicite d'auditer la cible (obligatoire en scan actif) |
 | `-F` | Scan rapide (`quick`, 18 ports critiques) |
 | `-p <spec>` / `-p-` | Ports ou plages (`-p 22,80,8000-8050`) ou plage `1-4096` (`-p-`) |
-| `--top-ports <N>` | Scanne les `N` ports les plus courants (`1` a `95`) |
 | `-P <profil>` | Profil metier (`web`, `database`, `infra`, `containers`, `iot`, `top100`) |
-| `-sV` | Lecture passive de banniere et detection de version |
-| `-sC` | Verification non-intrusive TLS X.509 + en-tetes de securite HTTP |
-| `-A` | Audit complet (`-sV` + TLS + HTTP) |
+| `-sV` / `-sC` / `-A` | Versions (`-sV`), TLS + HTTP (`-sC`), ou audit complet + CVE (`-A`) |
 | `-T1` .. `-T5` | Cadence d'execution (`-T1` prudent a `-T5` local tres rapide) |
-| `-iL <fichier>` | Charge une liste de cibles depuis un fichier texte |
-| `-R` / `-n` | Active (`-R`) ou desactive (`-n`) la resolution DNS |
-| `--open` | Affiche uniquement les ports `open` |
-| `--nmap` | Affiche la sortie console au format texte Nmap |
-| `-oN` / `-oJ` / `-oH` / `-oS` | Sauvegarde en texte Nmap, JSON, HTML autonome ou SARIF |
 | `-oA <prefixe>` | Genere simultanement `.txt`, `.json`, `.html` et `.sarif` |
 | `gui` | Ouvre l'interface graphique de bureau |
 
@@ -135,7 +129,7 @@ make build-all
 
 ## Documentation
 
-- [Guide complet CLI & Interface Graphique (style Nmap/Zenmap)](docs/CLI.md)
+- [Guide complet CLI, CVE & OSINT (style Nmap/Zenmap)](docs/CLI.md)
 - [Architecture technique](docs/ARCHITECTURE.md)
 - [Positionnement produit](docs/PRODUCT.md)
 - [Politique de securite](docs/SECURITY.md)

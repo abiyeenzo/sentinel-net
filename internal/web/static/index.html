@@ -473,6 +473,107 @@
   .sp-high { background: var(--orange); color: #fff; }
   .sp-medium { background: var(--amber); color: #0b111d; }
   .sp-low { background: var(--accent); color: #062130; }
+  .sp-info { background: #334155; color: #e2e8f0; }
+
+  .tab-badge {
+    display: inline-block;
+    margin-left: 0.35rem;
+    padding: 0.05rem 0.38rem;
+    border-radius: 99px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--muted);
+  }
+  .tab-badge.alert {
+    background: rgba(239, 68, 68, 0.22);
+    color: #fca5a5;
+  }
+  .tab-badge.info {
+    background: rgba(34, 211, 238, 0.18);
+    color: var(--accent);
+  }
+  .scope-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin: 0.45rem 0;
+    padding: 0.42rem 0.65rem;
+    background: #080d18;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-size: 0.78rem;
+  }
+  .cve-links-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 0.5rem;
+  }
+  a.cve-ext-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.24rem 0.6rem;
+    border-radius: 4px;
+    border: 1px solid var(--border-hi);
+    background: var(--bg-input);
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  a.cve-ext-btn:hover {
+    border-color: var(--accent);
+    background: rgba(34, 211, 238, 0.1);
+  }
+  .osint-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 0.85rem;
+  }
+  .osint-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.8rem 0.95rem;
+  }
+  .osint-card h4 {
+    margin: 0 0 0.55rem;
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+  }
+  .kv-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.6rem;
+    padding: 0.24rem 0;
+    border-bottom: 1px solid rgba(34, 48, 74, 0.55);
+    font-size: 0.79rem;
+  }
+  .kv-line:last-child { border-bottom: none; }
+  .kv-k { color: var(--muted); flex-shrink: 0; }
+  .kv-v { text-align: right; word-break: break-word; }
+  .chip-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.35rem;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    font-size: 0.74rem;
+  }
 
   /* Topology canvas */
   .topo-wrap {
@@ -573,11 +674,13 @@
         <label for="presetSelect">Profil de scan (style Zenmap)</label>
         <select id="presetSelect">
           <option value="fast">Scan rapide (-F)</option>
-          <option value="intense" selected>Audit complet (-A : Banniere + TLS + HTTP)</option>
+          <option value="intense" selected>Audit complet + CVE (-A --vuln)</option>
+          <option value="vuln_audit">Correlation CVE &amp; Scope (-sV --vuln -T4)</option>
+          <option value="full_osint">Audit Complet + OSINT (-A --osint -R)</option>
           <option value="standard">Scan standard (Top 100 ports)</option>
           <option value="version">Detection de services (-sV)</option>
-          <option value="web">Audit Serveurs Web &amp; TLS (-P web -sC)</option>
-          <option value="database">Audit Bases de donnees (-P database -sV)</option>
+          <option value="web">Audit Serveurs Web &amp; TLS (-P web -sC --vuln)</option>
+          <option value="database">Audit Bases de donnees (-P database -sV --vuln)</option>
           <option value="infra">Audit Infrastructure &amp; Admin (-P infra -A)</option>
           <option value="containers">Audit Conteneurs &amp; K8s (-P containers -A)</option>
           <option value="iot">Audit IoT prudent (-P iot -T2 -sV)</option>
@@ -610,12 +713,15 @@
     <div class="opts-strip">
       <div class="opts-checks">
         <label class="chk-inline"><input type="checkbox" id="chkBanner" checked /> Banniere (-sV)</label>
-        <label class="chk-inline"><input type="checkbox" id="chkTLS" checked /> Certificats TLS</label>
-        <label class="chk-inline"><input type="checkbox" id="chkHTTP" checked /> En-tetes HTTP</label>
-        <label class="chk-inline"><input type="checkbox" id="chkDNS" /> Resolution DNS (-R)</label>
+        <label class="chk-inline"><input type="checkbox" id="chkTLS" checked /> TLS</label>
+        <label class="chk-inline"><input type="checkbox" id="chkHTTP" checked /> HTTP</label>
+        <label class="chk-inline" title="Correlation passive des versions avec scope affecte et liens CVE officiels"><input type="checkbox" id="chkVuln" checked /> CVE &amp; Scope (--vuln)</label>
+        <label class="chk-inline" title="Interroger en direct l API officielle NIST NVD v2.0 par CPE"><input type="checkbox" id="chkCVEOnline" /> NVD Live (--cve-online)</label>
+        <label class="chk-inline" title="Enrichir avec DNS, SPF/DMARC, Transparence Certificats crt.sh, RDAP et ASN"><input type="checkbox" id="chkOSINT" /> OSINT (--osint)</label>
+        <label class="chk-inline"><input type="checkbox" id="chkDNS" /> DNS (-R)</label>
         <span style="display:inline-flex;align-items:center;gap:0.35rem;">
           <span style="font-size:0.75rem;color:var(--muted);">Ports (-p):</span>
-          <input type="text" id="portsInput" class="mono" placeholder="ex: 22,80,443,8000-8050" style="width:175px;padding:0.25rem 0.45rem;font-size:0.78rem;" />
+          <input type="text" id="portsInput" class="mono" placeholder="ex: 22,80,443,8000-8050" style="width:165px;padding:0.25rem 0.45rem;font-size:0.78rem;" />
         </span>
       </div>
       <label class="auth-pill" id="authPill">
@@ -645,9 +751,11 @@
       <div class="view-tabs">
         <button class="vtab active" data-vtab="nmap">Sortie Nmap</button>
         <button class="vtab" data-vtab="ports">Ports / Hotes</button>
+        <button class="vtab" data-vtab="vulns">Vulnerabilites &amp; CVE <span class="tab-badge mono" id="badgeVulns">0</span></button>
+        <button class="vtab" data-vtab="osint">OSINT &amp; Recon <span class="tab-badge mono" id="badgeOsint">0</span></button>
         <button class="vtab" data-vtab="topology">Topologie</button>
-        <button class="vtab" data-vtab="risks">Risques &amp; Details</button>
-        <button class="vtab" data-vtab="help">Guide CLI (style Nmap)</button>
+        <button class="vtab" data-vtab="risks">Risques &amp; Drift</button>
+        <button class="vtab" data-vtab="help">Guide CLI</button>
       </div>
 
       <div id="errBanner" class="alert-banner"></div>
@@ -671,6 +779,69 @@
         </div>
         <div id="portsContainer">
           <div class="empty-hint">Lancez un scan pour inspecter la table des ports et services.</div>
+        </div>
+      </div>
+
+      <div id="tab-vulns" class="tab-body">
+        <div class="kpi-row">
+          <div class="kpi-card">
+            <div class="kpi-lbl">CVE identifiees</div>
+            <div class="kpi-val mono" id="kpiVulnTotal">0</div>
+            <div class="kpi-sub" id="kpiVulnMode">Catalogue hors-ligne + TLS</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-lbl">Critiques / Elevees</div>
+            <div class="kpi-val mono" id="kpiVulnHigh">0</div>
+            <div class="kpi-sub" id="kpiVulnMedLow">0 moyennes | 0 faibles</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-lbl">Score CVSS Maximal</div>
+            <div class="kpi-val mono" id="kpiVulnCvss">0.0</div>
+            <div class="kpi-sub">Echelle CVSS v3.1 (0-10)</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-lbl">Composants identifies</div>
+            <div class="kpi-val mono" id="kpiCompCount">0</div>
+            <div class="kpi-sub">Empreintes CPE 2.3 passives</div>
+          </div>
+        </div>
+        <div id="componentsBox" style="margin-bottom:0.75rem;"></div>
+        <div class="filter-bar">
+          <input type="search" id="vulnSearch" placeholder="Filtrer par identifiant CVE, produit, version, port..." style="max-width:320px;" />
+          <select id="vulnSevFilter" style="max-width:190px;">
+            <option value="all">Toutes les severites</option>
+            <option value="critical">Critiques (CVSS >= 9.0)</option>
+            <option value="high">Elevees (CVSS >= 7.0)</option>
+            <option value="medium">Moyennes</option>
+            <option value="low">Faibles</option>
+          </select>
+        </div>
+        <div id="vulnsContainer">
+          <div class="empty-hint">Lancez un scan avec <strong>CVE &amp; Scope (--vuln)</strong> ou <strong>-A</strong> pour correler les versions detectees, afficher le scope exact de vulnerabilite et obtenir les liens directs vers NVD et CVE.org.</div>
+        </div>
+      </div>
+
+      <div id="tab-osint" class="tab-body">
+        <div class="osint-card" style="margin-bottom:0.85rem;">
+          <div style="display:flex;justify-content:space-between;align-items:end;gap:0.65rem;flex-wrap:wrap;">
+            <div class="field-grp" style="flex:1;min-width:230px;">
+              <label for="osintInput">Cible OSINT (Domaine, sous-domaine, URL ou IP publique)</label>
+              <input type="text" id="osintInput" class="mono" placeholder="ex: exemple.com, cloudflare.com, 1.1.1.1" />
+            </div>
+            <label class="chk-inline" style="padding-bottom:0.42rem;" title="Inspecte aussi /.well-known/security.txt, /robots.txt, le certificat HTTPS et les technologies Web (requiert -y)">
+              <input type="checkbox" id="chkOsintWeb" /> Surface Web active (security.txt / robots.txt)
+            </label>
+            <div style="display:flex;gap:0.4rem;">
+              <button class="btn btn-primary" id="btnRunOsint">Lancer OSINT</button>
+              <button class="btn" id="btnExportOsint" disabled>Exporter JSON</button>
+            </div>
+          </div>
+          <div style="font-size:0.75rem;color:var(--muted);margin-top:0.4rem;">
+            Collecte passive multi-sources : enregistrements DNS (A, AAAA, MX, NS, TXT, PTR), posture anti-spoofing SPF/DMARC, ecosysteme SaaS/Cloud, transparence des certificats (crt.sh), attribution RDAP/WHOIS et ASN BGP.
+          </div>
+        </div>
+        <div id="osintContainer">
+          <div class="empty-hint">Saisissez un domaine ou une IP ci-dessus et cliquez sur <strong>Lancer OSINT</strong> (ou cochez <strong>OSINT (--osint)</strong> lors d'un scan reseau).</div>
         </div>
       </div>
 
@@ -738,26 +909,28 @@
   };
 
   const PRESETS = {
-    fast:       { profile: 'quick',      ports: '',       banner: false, tls: false, http: false, dns: false, timing: 'T4' },
-    intense:    { profile: 'top100',     ports: '',       banner: true,  tls: true,  http: true,  dns: false, timing: 'T3' },
-    standard:   { profile: 'top100',     ports: '',       banner: false, tls: false, http: false, dns: false, timing: 'T3' },
-    version:    { profile: 'top100',     ports: '',       banner: true,  tls: false, http: false, dns: false, timing: 'T3' },
-    web:        { profile: 'web',        ports: '',       banner: true,  tls: true,  http: true,  dns: false, timing: 'T3' },
-    database:   { profile: 'database',   ports: '',       banner: true,  tls: true,  http: false, dns: false, timing: 'T3' },
-    infra:      { profile: 'infra',      ports: '',       banner: true,  tls: true,  http: true,  dns: false, timing: 'T3' },
-    containers: { profile: 'containers', ports: '',       banner: true,  tls: true,  http: true,  dns: false, timing: 'T3' },
-    iot:        { profile: 'iot',        ports: '',       banner: true,  tls: false, http: true,  dns: false, timing: 'T2' },
-    full1024:   { profile: '',           ports: '1-1024', banner: true,  tls: false, http: false, dns: false, timing: 'T4' },
+    fast:       { profile: 'quick',      ports: '',       banner: false, tls: false, http: false, vuln: false, osint: false, dns: false, timing: 'T4' },
+    intense:    { profile: 'top100',     ports: '',       banner: true,  tls: true,  http: true,  vuln: true,  osint: false, dns: false, timing: 'T3' },
+    vuln_audit: { profile: 'top100',     ports: '',       banner: true,  tls: true,  http: true,  vuln: true,  osint: false, dns: false, timing: 'T4' },
+    full_osint: { profile: 'top100',     ports: '',       banner: true,  tls: true,  http: true,  vuln: true,  osint: true,  dns: true,  timing: 'T3' },
+    standard:   { profile: 'top100',     ports: '',       banner: false, tls: false, http: false, vuln: false, osint: false, dns: false, timing: 'T3' },
+    version:    { profile: 'top100',     ports: '',       banner: true,  tls: false, http: false, vuln: true,  osint: false, dns: false, timing: 'T3' },
+    web:        { profile: 'web',        ports: '',       banner: true,  tls: true,  http: true,  vuln: true,  osint: false, dns: false, timing: 'T3' },
+    database:   { profile: 'database',   ports: '',       banner: true,  tls: true,  http: false, vuln: true,  osint: false, dns: false, timing: 'T3' },
+    infra:      { profile: 'infra',      ports: '',       banner: true,  tls: true,  http: true,  vuln: true,  osint: false, dns: false, timing: 'T3' },
+    containers: { profile: 'containers', ports: '',       banner: true,  tls: true,  http: true,  vuln: true,  osint: false, dns: false, timing: 'T3' },
+    iot:        { profile: 'iot',        ports: '',       banner: true,  tls: false, http: true,  vuln: true,  osint: false, dns: false, timing: 'T2' },
+    full1024:   { profile: '',           ports: '1-1024', banner: true,  tls: false, http: false, vuln: true,  osint: false, dns: false, timing: 'T4' },
   };
 
   const CLI_RECIPES = [
+    { title: 'Audit CVE avec scope de versions affectees et liens NVD/CVE.org (--vuln)', cmd: 'sentinel-net -sV --vuln 127.0.0.1 -y', target: '127.0.0.1', preset: 'vuln_audit' },
+    { title: 'Reconnaissance OSINT passive complete (DNS, SPF/DMARC, crt.sh, RDAP, ASN)', cmd: 'sentinel-net osint exemple.com', osintTarget: 'exemple.com' },
+    { title: 'Audit complet reseau + CVE + enrichissement OSINT (-A --osint -R)', cmd: 'sentinel-net -A --osint -R 127.0.0.1 -y', target: '127.0.0.1', preset: 'full_osint' },
     { title: 'Scan rapide des 18 ports critiques (equivalent nmap -F)', cmd: 'sentinel-net -F 127.0.0.1 -y', target: '127.0.0.1', preset: 'fast' },
-    { title: 'Audit complet services + TLS X.509 + en-tetes HTTP (equivalent nmap -A)', cmd: 'sentinel-net -A 127.0.0.1 -y', target: '127.0.0.1', preset: 'intense' },
     { title: 'Decouverte rapide d un sous-reseau local /24 en cadence -T4', cmd: 'sentinel-net -F -T4 192.168.1.0/24 -y', target: '192.168.1.0/24', preset: 'fast' },
-    { title: 'Detection des versions et bannieres sur ports specifiques (-sV -p)', cmd: 'sentinel-net -sV -p 22,80,443,3306,5432,6379 127.0.0.1 -y', target: '127.0.0.1', ports: '22,80,443,3306,5432,6379', banner: true },
-    { title: 'Audit des serveurs Web et certificats HTTPS (-P web -sC)', cmd: 'sentinel-net -P web -sC 127.0.0.1 -y', target: '127.0.0.1', preset: 'web' },
-    { title: 'Verification d exposition des bases de donnees (-P database -sV)', cmd: 'sentinel-net -P database -sV 127.0.0.1 -y', target: '127.0.0.1', preset: 'database' },
-    { title: 'Export simultane tous formats : .txt, .json, .html, .sarif (-oA)', cmd: 'sentinel-net -A 127.0.0.1 -oA rapport-audit -y', target: '127.0.0.1', preset: 'intense' },
+    { title: 'Correlation CVE temps reel via API officielle NIST NVD v2.0 (--cve-online)', cmd: 'sentinel-net -A --cve-online 127.0.0.1 -y', target: '127.0.0.1', preset: 'vuln_audit', cveOnline: true },
+    { title: 'Export simultane tous formats : .txt, .json, .html, .sarif (-oA)', cmd: 'sentinel-net -A --vuln 127.0.0.1 -oA rapport-audit -y', target: '127.0.0.1', preset: 'intense' },
   ];
 
   const state = {
@@ -765,6 +938,7 @@
     activeScanId: null,
     currentProfile: 'top100',
     report: null,
+    osintReports: [],
     nmapText: '',
     baseline: null,
     interfaces: [],
@@ -773,6 +947,17 @@
     selectedHost: null,
     selectedPort: null,
   };
+
+  function flattenObservations(rep) {
+    if (!rep || !Array.isArray(rep.hosts)) return [];
+    const out = [];
+    rep.hosts.forEach((h) => {
+      (h.observations || []).forEach((o) => {
+        out.push({ ...o, target: h.target, hostname: h.hostname || '' });
+      });
+    });
+    return out;
+  }
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -796,6 +981,9 @@
     const b = $('chkBanner').checked;
     const t = $('chkTLS').checked;
     const h = $('chkHTTP').checked;
+    const v = $('chkVuln').checked;
+    const vo = $('chkCVEOnline').checked;
+    const os = $('chkOSINT').checked;
     const r = $('chkDNS').checked;
 
     if (ports === '-' || ports === '1-4096') {
@@ -819,7 +1007,11 @@
       }
     }
 
-    if (r) parts.push('-R');
+    if (v && !(b && t && h)) parts.push('--vuln');
+    else if (v) parts.push('--vuln');
+    if (vo) parts.push('--cve-online');
+    if (os) parts.push('--osint');
+    if (r || os) parts.push('-R');
     if (timing && timing !== 'T3') parts.push('-' + timing);
 
     const tgt = $('targetInput').value.trim() || '127.0.0.1';
@@ -836,6 +1028,9 @@
     $('chkBanner').checked = p.banner;
     $('chkTLS').checked = p.tls;
     $('chkHTTP').checked = p.http;
+    $('chkVuln').checked = Boolean(p.vuln);
+    $('chkCVEOnline').checked = false;
+    $('chkOSINT').checked = Boolean(p.osint);
     $('chkDNS').checked = p.dns;
     $('timingSelect').value = p.timing;
     buildCommandPreview();
@@ -845,11 +1040,19 @@
     const tokens = raw.trim().split(/\s+/).filter(Boolean);
     if (!tokens.length) return;
     let i = tokens[0].includes('sentinel-net') ? 1 : 0;
+    if (tokens[i] === 'osint' || tokens[i] === 'recon') {
+      const q = tokens[i + 1] || '';
+      if (q && !q.startsWith('-')) {
+        $('osintInput').value = q;
+        document.querySelector('[data-vtab="osint"]').click();
+      }
+      return;
+    }
     if (tokens[i] === 'scan') i++;
 
     let prof = 'top100';
     let ports = '';
-    let banner = false, tls = false, http = false, dns = false, auth = $('chkAuth').checked;
+    let banner = false, tls = false, http = false, vuln = false, cveOnline = false, osint = false, dns = false, auth = $('chkAuth').checked;
     let timing = 'T3';
     const targets = [];
 
@@ -860,11 +1063,14 @@
       else if (tok === '-p' || tok === '--ports') { ports = tokens[++i] || ''; prof = ''; }
       else if (tok.startsWith('-p') && tok.length > 2) { ports = tok.slice(2); prof = ''; }
       else if (tok === '-P' || tok === '--profile') { prof = tokens[++i] || 'top100'; }
-      else if (tok === '-A' || tok === '--inspect' || tok === '-i') { banner = true; tls = true; http = true; }
+      else if (tok === '-A' || tok === '--inspect' || tok === '-i') { banner = true; tls = true; http = true; vuln = true; }
       else if (tok === '-sV' || tok === '--banner') { banner = true; }
       else if (tok === '-sC') { tls = true; http = true; }
       else if (tok === '--tls') { tls = true; }
       else if (tok === '--http') { http = true; }
+      else if (tok === '--vuln' || tok === '--cve' || tok.includes('script=vuln')) { vuln = true; }
+      else if (tok === '--cve-online') { vuln = true; cveOnline = true; }
+      else if (tok === '--osint' || tok.includes('script=osint')) { osint = true; dns = true; }
       else if (tok === '-R' || tok === '--resolve') { dns = true; }
       else if (tok === '-y' || tok === '--authorized') { auth = true; }
       else if (/^-T[1-5]$/.test(tok)) { timing = tok.slice(1); }
@@ -876,6 +1082,9 @@
     $('chkBanner').checked = banner;
     $('chkTLS').checked = tls;
     $('chkHTTP').checked = http;
+    $('chkVuln').checked = vuln;
+    $('chkCVEOnline').checked = cveOnline;
+    $('chkOSINT').checked = osint;
     $('chkDNS').checked = dns;
     $('chkAuth').checked = auth;
     $('authPill').classList.toggle('checked', auth);
@@ -887,7 +1096,7 @@
   $('presetSelect').addEventListener('change', (e) => {
     if (e.target.value !== 'custom') applyPreset(e.target.value);
   });
-  ['targetInput', 'timingSelect', 'chkBanner', 'chkTLS', 'chkHTTP', 'chkDNS', 'portsInput'].forEach((id) => {
+  ['targetInput', 'timingSelect', 'chkBanner', 'chkTLS', 'chkHTTP', 'chkVuln', 'chkCVEOnline', 'chkOSINT', 'chkDNS', 'portsInput'].forEach((id) => {
     $(id).addEventListener('input', () => {
       if (id === 'portsInput' && $('portsInput').value.trim() !== '') {
         $('presetSelect').value = 'custom';
@@ -1012,7 +1221,7 @@
 
     // Services tab
     const svcMap = new Map();
-    state.report.observations.forEach((o) => {
+    flattenObservations(state.report).forEach((o) => {
       if (o.state !== 'open') return;
       const key = `${o.port}:${o.service?.id || o.service?.label || 'unknown'}`;
       svcMap.set(key, (svcMap.get(key) || 0) + 1);
@@ -1071,7 +1280,9 @@
       if (/^\d+\/tcp\s+open\b/.test(line)) return `<span class="c-open">${line}</span>`;
       if (/^\d+\/tcp\s+closed\b/.test(line)) return `<span class="c-closed">${line}</span>`;
       if (/^\d+\/tcp\s+unknown\b/.test(line)) return `<span class="c-unk">${line}</span>`;
-      if (line.startsWith('|_')) return `<span class="c-sub">${line}</span>`;
+      if (line.includes('CVE-') && (line.includes('CRITICAL') || line.includes('HIGH'))) return `<span class="c-crit">${line}</span>`;
+      if (line.includes('CVE-')) return `<span class="c-warn">${line}</span>`;
+      if (line.startsWith('|_') || line.startsWith('| ')) return `<span class="c-sub">${line}</span>`;
       if (line.includes('[CRITICAL]') || line.includes('[HIGH]')) return `<span class="c-crit">${line}</span>`;
       if (line.includes('[MEDIUM]')) return `<span class="c-warn">${line}</span>`;
       return line;
@@ -1120,12 +1331,12 @@
     const q = $('portSearch').value.trim().toLowerCase();
     const sf = $('stateFilter').value;
 
-    const rows = state.report.observations.filter((o) => {
+    const rows = flattenObservations(state.report).filter((o) => {
       if (state.selectedHost && o.target !== state.selectedHost) return false;
       if (state.selectedPort && o.port !== state.selectedPort) return false;
       if (sf !== 'all' && o.state !== sf) return false;
       if (!q) return true;
-      const hay = `${o.target} ${o.port} ${o.service?.id || ''} ${o.service?.label || ''} ${o.service?.product || ''} ${o.inspection?.banner || ''}`.toLowerCase();
+      const hay = `${o.target} ${o.hostname || ''} ${o.port} ${o.service?.id || ''} ${o.service?.label || ''} ${o.service?.product || ''} ${o.inspection?.banner || ''}`.toLowerCase();
       return hay.includes(q);
     });
 
@@ -1158,8 +1369,11 @@
             det.push(`HTTP ${o.inspection.http.statusCode}${miss ? ` (-${miss} en-tetes)` : ' (OK)'}`);
           }
           if (o.inspection?.banner) det.push(`<code class="mono" style="color:#93c5fd;">${esc(o.inspection.banner.slice(0, 75))}</code>`);
+          if (Array.isArray(o.vulnerabilities) && o.vulnerabilities.length) {
+            det.push(`<span class="sev-pill sp-critical">${o.vulnerabilities.length} CVE</span>`);
+          }
           return `<tr>
-            <td class="mono">${esc(o.target)}</td>
+            <td class="mono">${esc(o.target)}${o.hostname ? ` <span style="color:var(--muted)">(${esc(o.hostname)})</span>` : ''}</td>
             <td class="mono"><strong>${o.port}</strong>/tcp</td>
             <td><span class="st-badge st-${esc(o.state)}">${esc(o.state)}</span></td>
             <td class="mono">${o.latencyMs != null ? o.latencyMs.toFixed(2) + ' ms' : '-'}</td>
@@ -1280,14 +1494,282 @@
     `).join('');
   }
 
+  function renderVulnsPane() {
+    const vulnsAll = state.report?.vulnerabilities || [];
+    const vs = state.report?.vulnSummary || { total: 0, critical: 0, high: 0, medium: 0, low: 0, maxCvss: 0 };
+    const badge = $('badgeVulns');
+    badge.textContent = String(vulnsAll.length);
+    badge.className = 'tab-badge mono' + (vulnsAll.length > 0 ? ' alert' : '');
+
+    // Collect deduplicated software components across all open ports
+    const compMap = new Map();
+    if (state.report) {
+      flattenObservations(state.report).forEach((o) => {
+        (o.components || []).forEach((c) => {
+          compMap.set(`${c.display}:${c.version}:${o.target}:${o.port}`, { ...c, host: o.target, port: o.port });
+        });
+      });
+    }
+    const comps = Array.from(compMap.values());
+
+    $('kpiVulnTotal').textContent = String(vs.total || vulnsAll.length);
+    $('kpiVulnTotal').style.color = vulnsAll.length > 0 ? 'var(--red)' : 'var(--green)';
+    $('kpiVulnMode').textContent = vs.onlineUsed ? 'Catalogue interne + API NIST NVD v2.0' : 'Catalogue interne hors-ligne + TLS';
+    $('kpiVulnHigh').textContent = `${vs.critical || 0} / ${vs.high || 0}`;
+    $('kpiVulnMedLow').textContent = `${vs.medium || 0} moyennes | ${vs.low || 0} faibles`;
+    $('kpiVulnCvss').textContent = (vs.maxCvss || 0).toFixed(1);
+    $('kpiCompCount').textContent = String(comps.length);
+
+    const cBox = $('componentsBox');
+    if (comps.length > 0) {
+      cBox.innerHTML = `<div class="osint-card" style="padding:0.6rem 0.85rem;">
+        <div style="font-size:0.72rem;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:0.3rem;">Composants logiciels et versions empreintes passivement</div>
+        <div class="chip-wrap">
+          ${comps.map((c) => `<span class="chip mono" title="${esc(c.cpe)}"><strong>${esc(c.display)}</strong> ${esc(c.version)} <span style="color:var(--muted)">(${esc(c.host)}:${c.port})</span></span>`).join('')}
+        </div>
+      </div>`;
+    } else {
+      cBox.innerHTML = '';
+    }
+
+    const vBox = $('vulnsContainer');
+    if (!state.report) return;
+
+    const q = $('vulnSearch').value.trim().toLowerCase();
+    const sf = $('vulnSevFilter').value;
+    const filtered = vulnsAll.filter((v) => {
+      if (state.selectedHost && v.host !== state.selectedHost) return false;
+      if (sf !== 'all' && v.severity !== sf) return false;
+      if (!q) return true;
+      const hay = `${v.cve} ${v.product} ${v.detectedVersion} ${v.affectedScope} ${v.title} ${v.host} ${v.port}`.toLowerCase();
+      return hay.includes(q);
+    });
+
+    if (!filtered.length) {
+      vBox.innerHTML = vulnsAll.length === 0
+        ? '<div class="finding-card" style="border-left-color:var(--green);"><strong>Aucune vulnerabilite CVE connue detectee</strong> sur les versions annoncees par les services ouverts.</div>'
+        : '<div class="empty-hint">Aucune CVE ne correspond aux filtres selectionnes.</div>';
+      return;
+    }
+
+    vBox.innerHTML = filtered.map((v) => {
+      const refs = Array.isArray(v.references) && v.references.length
+        ? v.references
+        : [
+            { label: 'Fiche NIST NVD', url: v.nvdUrl },
+            { label: 'Fiche CVE.org', url: v.cveOrgUrl },
+          ];
+      return `<div class="finding-card sev-${esc(v.severity)}">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;">
+            <span class="sev-pill sp-${esc(v.severity)}">${esc(v.severity)} &middot; CVSS ${Number(v.cvss || 0).toFixed(1)}</span>
+            <a href="${esc(v.nvdUrl)}" target="_blank" rel="noopener noreferrer" class="mono" style="color:var(--accent);font-weight:700;text-decoration:none;font-size:0.88rem;">${esc(v.cve)}</a>
+            ${v.cwe ? `<span class="grade-mini mono">${esc(v.cwe)}</span>` : ''}
+            <strong>${esc(v.title)}</strong>
+          </div>
+          <span class="mono" style="font-size:0.78rem;color:var(--muted);">${esc(v.host)}:${v.port} (${esc(v.service)})</span>
+        </div>
+
+        <div class="scope-strip mono">
+          <span><strong style="color:var(--muted);">Composant detecte :</strong> <span style="color:#93c5fd;">${esc(v.product)} ${esc(v.detectedVersion)}</span></span>
+          <span style="color:var(--border-hi);">|</span>
+          <span><strong style="color:var(--amber);">Scope de vulnerabilite :</strong> <span style="color:#fde68a;">${esc(v.affectedScope)}</span></span>
+          ${v.fixedVersion ? `<span style="color:var(--border-hi);">|</span><span><strong style="color:var(--green);">Version corrigee :</strong> <span style="color:#6ee7b7;">${esc(v.fixedVersion)}</span></span>` : ''}
+        </div>
+
+        <div style="font-size:0.81rem;margin:0.35rem 0;">${esc(v.summary)}</div>
+        <div style="font-size:0.79rem;color:#cbd5e1;"><strong>Remediation :</strong> ${esc(v.remediation)}</div>
+        ${v.backportCaveat ? `<div style="font-size:0.74rem;color:var(--muted);margin-top:0.25rem;">Note verification : ${esc(v.backportCaveat)}</div>` : ''}
+
+        <div class="cve-links-row">
+          ${refs.map((r) => `<a class="cve-ext-btn" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${esc(r.label)} &nearr;</a>`).join('')}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function getActiveOSINTList() {
+    const map = new Map();
+    state.osintReports.forEach((r) => { if (r?.query) map.set(r.query, r); });
+    if (Array.isArray(state.report?.osint)) {
+      state.report.osint.forEach((r) => { if (r?.query) map.set(r.query, r); });
+    }
+    return Array.from(map.values());
+  }
+
+  function renderOSINTPane() {
+    const list = getActiveOSINTList();
+    const badge = $('badgeOsint');
+    badge.textContent = String(list.length);
+    badge.className = 'tab-badge mono' + (list.length > 0 ? ' info' : '');
+    $('btnExportOsint').disabled = list.length === 0;
+
+    const box = $('osintContainer');
+    if (!list.length) return;
+
+    box.innerHTML = list.map((rep, idx) => {
+      const dns = rep.dns || {};
+      const es = dns.emailSecurity || {};
+      const rdap = rep.rdap || {};
+      const geo = rep.geoAsn || {};
+      const ct = rep.ctLogs || {};
+      const web = rep.web || null;
+      const subs = ct.subdomains || [];
+      const obs = rep.observations || [];
+
+      return `<div style="margin-bottom:1.25rem;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.55rem;flex-wrap:wrap;gap:0.5rem;">
+          <div>
+            <span class="sev-pill sp-low mono">${esc(rep.targetType || 'osint')}</span>
+            <strong class="mono" style="font-size:0.98rem;margin-left:0.45rem;color:var(--accent);">${esc(rep.query)}</strong>
+            ${rep.apexDomain ? `<span class="mono" style="color:var(--muted);font-size:0.78rem;margin-left:0.4rem;">(apex: ${esc(rep.apexDomain)})</span>` : ''}
+          </div>
+          <span class="mono" style="font-size:0.74rem;color:var(--muted);">Collecte en ${Number(rep.durationMs || 0).toFixed(0)} ms</span>
+        </div>
+
+        <div class="osint-grid">
+          <div class="osint-card">
+            <h4>Identite, RDAP / WHOIS &amp; ASN BGP</h4>
+            <div class="kv-line"><span class="kv-k">Adresses IP</span><span class="kv-v mono">${esc((rep.ips || []).join(', ') || 'n/a')} ${rep.scope ? `[${esc(rep.scope)}]` : ''}</span></div>
+            <div class="kv-line"><span class="kv-k">ASN / Operateur</span><span class="kv-v mono">${esc([geo.asn, geo.org || geo.isp].filter(Boolean).join(' - ') || 'n/a')}</span></div>
+            <div class="kv-line"><span class="kv-k">Localisation IP</span><span class="kv-v">${esc([geo.city, geo.region, geo.country].filter(Boolean).join(', ') || 'n/a')}</span></div>
+            <div class="kv-line"><span class="kv-k">Registrar RDAP</span><span class="kv-v">${esc(rdap.registrar || 'n/a')}</span></div>
+            <div class="kv-line"><span class="kv-k">DNSSEC</span><span class="kv-v mono" style="color:${rdap.dnssecSigned ? 'var(--green)' : 'var(--amber)'}">${rdap.domainName ? (rdap.dnssecSigned ? 'Signe (actif)' : 'Non signe') : 'n/a'}</span></div>
+            <div class="kv-line"><span class="kv-k">Bloc Reseau / Abuse</span><span class="kv-v mono">${esc([rdap.networkName, rdap.ipRange, rdap.abuseContact].filter(Boolean).join(' | ') || 'n/a')}</span></div>
+          </div>
+
+          <div class="osint-card">
+            <h4>DNS, Posture Email (SPF / DMARC) &amp; Cloud</h4>
+            <div class="kv-line"><span class="kv-k">Serveurs NS</span><span class="kv-v mono">${esc((dns.ns || []).join(', ') || 'n/a')}</span></div>
+            <div class="kv-line"><span class="kv-k">Serveurs Mail MX</span><span class="kv-v mono">${esc((dns.mx || []).map((m) => `${m.host} (${m.pref})`).join(', ') || 'n/a')}</span></div>
+            <div class="kv-line"><span class="kv-k">CNAME / PTR</span><span class="kv-v mono">${esc(dns.cname || Object.values(dns.ptr || {}).flat().join(', ') || 'n/a')}</span></div>
+            <div class="kv-line"><span class="kv-k">Politique SPF</span><span class="kv-v mono" style="color:${es.missingSpf || es.permissiveSpf ? 'var(--amber)' : 'var(--green)'}">${esc(es.missingSpf ? 'Absent' : (es.spfPolicy || 'Present'))}</span></div>
+            <div class="kv-line"><span class="kv-k">Politique DMARC</span><span class="kv-v mono" style="color:${es.missingDmarc ? 'var(--amber)' : 'var(--green)'}">${esc(es.missingDmarc ? 'Absent' : (es.dmarcPolicy || 'Present'))}</span></div>
+            ${(dns.detectedProviders || []).length ? `<div style="margin-top:0.45rem;"><span style="font-size:0.72rem;color:var(--muted);">Ecosysteme SaaS / Cloud detecte :</span><div class="chip-wrap">${dns.detectedProviders.map((p) => `<span class="chip">${esc(p)}</span>`).join('')}</div></div>` : ''}
+          </div>
+        </div>
+
+        ${ct.source ? `<div class="osint-card" style="margin-bottom:0.75rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.45rem;">
+            <h4 style="margin:0;">Transparence des Certificats (${esc(ct.source)}) &middot; ${subs.length} sous-domaine(s) / ${ct.certificatesCount || 0} certificat(s)</h4>
+            <input type="search" data-ct-filter="${idx}" placeholder="Filtrer les sous-domaines..." style="max-width:230px;padding:0.25rem 0.5rem;font-size:0.76rem;" />
+          </div>
+          ${(ct.issuers || []).length ? `<div style="font-size:0.75rem;color:var(--muted);margin-bottom:0.4rem;">Autorites de certification (CA) : <span class="mono">${esc(ct.issuers.join(' | '))}</span></div>` : ''}
+          <div class="chip-wrap" id="ctSubs-${idx}" style="max-height:190px;overflow-y:auto;">
+            ${subs.length ? subs.map((s) => `<span class="chip mono" data-sub-item="${esc(s)}">${esc(s)} <button class="btn btn-xs" style="padding:0.05rem 0.35rem;font-size:0.67rem;" data-scan-sub="${esc(s)}" title="Envoyer vers la barre de scan">Cibler</button></span>`).join('') : '<span style="color:var(--muted);font-size:0.78rem;">Aucun sous-domaine public recense.</span>'}
+          </div>
+        </div>` : ''}
+
+        ${web ? `<div class="osint-card" style="margin-bottom:0.75rem;">
+          <h4>Surface Web (${esc(web.url)}) &middot; HTTP ${web.statusCode}</h4>
+          <div class="kv-line"><span class="kv-k">Titre HTML</span><span class="kv-v">${esc(web.title || 'n/a')}</span></div>
+          <div class="kv-line"><span class="kv-k">Technologies</span><span class="kv-v mono">${esc((web.technologies || []).join(', ') || web.server || 'n/a')}</span></div>
+          <div class="kv-line"><span class="kv-k">RFC 9116 security.txt</span><span class="kv-v mono">${web.securityTxt?.found ? esc((web.securityTxt.contacts || []).join(', ') || web.securityTxt.url) : 'Absent'}</span></div>
+          <div class="kv-line"><span class="kv-k">robots.txt</span><span class="kv-v mono">${web.robotsTxt?.found ? esc((web.robotsTxt.disallowSample || []).slice(0, 6).join(', ') || 'Present') : 'Absent'}</span></div>
+        </div>` : ''}
+
+        ${obs.length ? `<div>
+          <div style="font-size:0.74rem;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:0.4rem;">Observations d'hygiene OSINT (${obs.length})</div>
+          ${obs.map((n) => `<div class="finding-card sev-${esc(n.severity === 'info' ? 'low' : n.severity)}">
+            <div><span class="sev-pill sp-${esc(n.severity)}">${esc(n.severity)}</span> <strong style="margin-left:0.35rem;">${esc(n.title)}</strong></div>
+            <div class="mono" style="font-size:0.76rem;color:#93c5fd;margin:0.25rem 0;">Preuve : ${esc(n.evidence)}</div>
+            <div style="font-size:0.78rem;color:var(--muted);">${esc(n.recommendation)}</div>
+          </div>`).join('')}
+        </div>` : ''}
+      </div>`;
+    }).join('<hr style="border:none;border-top:1px solid var(--border);margin:1rem 0;"/>');
+
+    box.querySelectorAll('[data-scan-sub]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        $('targetInput').value = btn.dataset.scanSub;
+        $('chkDNS').checked = true;
+        buildCommandPreview();
+        document.querySelector('[data-vtab="nmap"]').click();
+      });
+    });
+    box.querySelectorAll('[data-ct-filter]').forEach((inp) => {
+      inp.addEventListener('input', () => {
+        const idx = inp.dataset.ctFilter;
+        const term = inp.value.trim().toLowerCase();
+        const wrap = $('ctSubs-' + idx);
+        if (!wrap) return;
+        wrap.querySelectorAll('[data-sub-item]').forEach((el) => {
+          el.style.display = !term || el.dataset.subItem.toLowerCase().includes(term) ? '' : 'none';
+        });
+      });
+    });
+  }
+
   function renderAllViews() {
     renderSidebar();
     renderHistory();
     renderNmapPane();
     renderPortsPane();
+    renderVulnsPane();
+    renderOSINTPane();
     renderTopologyPane();
     renderRisksPane();
   }
+
+  $('vulnSearch').addEventListener('input', renderVulnsPane);
+  $('vulnSevFilter').addEventListener('change', renderVulnsPane);
+
+  async function runStandaloneOSINT() {
+    showErr('');
+    const query = $('osintInput').value.trim() || $('targetInput').value.trim();
+    if (!query) {
+      showErr('Indiquez un nom de domaine ou une adresse IP pour lancer la reconnaissance OSINT.');
+      return;
+    }
+    $('osintInput').value = query;
+    const activeWeb = $('chkOsintWeb').checked;
+    if (activeWeb && !$('chkAuth').checked && query !== '127.0.0.1' && query !== '::1' && query.toLowerCase() !== 'localhost') {
+      showErr("L'option Surface Web active contacte directement la cible : cochez l'autorisation (-y) en haut a droite.");
+      return;
+    }
+
+    $('btnRunOsint').disabled = true;
+    $('statusText').textContent = `Reconnaissance OSINT en cours sur ${query}...`;
+    try {
+      const resp = await fetch('/api/osint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          activeWeb,
+          authorized: $('chkAuth').checked,
+          timeoutMs: 7000,
+        }),
+      });
+      const doc = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(doc.error || `Erreur HTTP ${resp.status}`);
+      if (doc.osint) {
+        state.osintReports = [doc.osint, ...state.osintReports.filter((x) => x.query !== doc.osint.query)].slice(0, 8);
+        renderOSINTPane();
+        $('statusText').textContent = `OSINT termine pour ${query} en ${Number(doc.osint.durationMs || 0).toFixed(0)} ms`;
+      }
+    } catch (err) {
+      showErr(err.message || String(err));
+      $('statusText').textContent = 'Echec OSINT';
+    } finally {
+      $('btnRunOsint').disabled = false;
+    }
+  }
+
+  $('btnRunOsint').addEventListener('click', runStandaloneOSINT);
+  $('osintInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !$('btnRunOsint').disabled) runStandaloneOSINT();
+  });
+  $('btnExportOsint').addEventListener('click', () => {
+    const list = getActiveOSINTList();
+    if (!list.length) return;
+    const blob = new Blob([JSON.stringify(list.length === 1 ? list[0] : list, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'sentinel-net-osint.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
 
   $('portSearch').addEventListener('input', renderPortsPane);
   $('stateFilter').addEventListener('change', renderPortsPane);
@@ -1352,6 +1834,9 @@
           banner: $('chkBanner').checked,
           tls: $('chkTLS').checked,
           http: $('chkHTTP').checked,
+          vuln: $('chkVuln').checked,
+          cveOnline: $('chkCVEOnline').checked,
+          osint: $('chkOSINT').checked,
           resolveDns: $('chkDNS').checked,
           baseline: state.baseline,
         }),
@@ -1467,6 +1952,11 @@
     btn.addEventListener('click', () => {
       const r = CLI_RECIPES[Number(btn.dataset.recipe)];
       if (!r) return;
+      if (r.osintTarget) {
+        $('osintInput').value = r.osintTarget;
+        document.querySelector('[data-vtab="osint"]').click();
+        return;
+      }
       $('targetInput').value = r.target;
       if (r.preset) {
         $('presetSelect').value = r.preset;
@@ -1476,6 +1966,10 @@
         state.currentProfile = '';
         $('portsInput').value = r.ports || '';
         $('chkBanner').checked = Boolean(r.banner);
+        buildCommandPreview();
+      }
+      if (r.cveOnline) {
+        $('chkCVEOnline').checked = true;
         buildCommandPreview();
       }
       document.querySelector('[data-vtab="nmap"]').click();

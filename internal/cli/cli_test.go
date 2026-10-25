@@ -257,3 +257,110 @@ func TestNmapStyleCLIAndMultiOutput(t *testing.T) {
 		}
 	}
 }
+
+func TestVulnScopeLinksAndOSINTIntegration(t *testing.T) {
+	ctx := context.Background()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_, _ = c.Write([]byte("SSH-2.0-OpenSSH_9.6p1\r\n"))
+			_ = c.Close()
+		}
+	}()
+	vulnPort := ln.Addr().(*net.TCPAddr).Port
+
+	// 1. JSON output with --script=vuln includes affectedScope and official CVE links
+	ioCfg, out, errBuf := bufferIO()
+	code := Run(ctx, []string{
+		"--script=vuln",
+		"-p", strconv.Itoa(vulnPort),
+		"--json",
+		"127.0.0.1",
+		"-y",
+	}, ioCfg)
+	if code != 0 {
+		t.Fatalf("expected exit 0 on --script=vuln, got %d (stderr=%s)", code, errBuf.String())
+	}
+
+	var rep scanner.Report
+	if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(rep.Vulnerabilities) == 0 {
+		t.Fatalf("expected CVE-2024-6387 vulnerability match on OpenSSH 9.6p1")
+	}
+	foundRegreSSHion := false
+	for _, v := range rep.Vulnerabilities {
+		if v.CVE == "CVE-2024-6387" {
+			foundRegreSSHion = true
+			if !strings.Contains(v.AffectedScope, "9.8p1") || v.NVDURL == "" || v.CVEOrgURL == "" {
+				t.Fatalf("missing scope or CVE links on %+v", v)
+			}
+		}
+	}
+	if !foundRegreSSHion {
+		t.Fatalf("expected CVE-2024-6387 in %+v", rep.Vulnerabilities)
+	}
+
+	// Verify Nmap, Markdown, HTML, and SARIF include CVE ID, scope, and NVD link
+	for _, fmtName := range []string{"nmap", "table", "markdown", "html", "sarif"} {
+		rendered, fErr := report.Format(&rep, report.Options{Format: fmtName})
+		if fErr != nil {
+			t.Fatalf("format %s error: %v", fmtName, fErr)
+		}
+		if !strings.Contains(rendered, "CVE-2024-6387") || !strings.Contains(rendered, "nvd.nist.gov/vuln/detail/CVE-2024-6387") {
+			t.Fatalf("format %s missing CVE ID or NVD link:\n%s", fmtName, rendered)
+		}
+	}
+
+	// 2. Policy gate --fail-on-severity high triggers exit code 3 on CVE-2024-6387
+	ioCfg, _, _ = bufferIO()
+	gateCode := Run(ctx, []string{
+		"--vuln",
+		"-p", strconv.Itoa(vulnPort),
+		"--fail-on-severity", "high",
+		"127.0.0.1",
+		"-y",
+	}, ioCfg)
+	if gateCode != 3 {
+		t.Fatalf("expected exit code 3 on --fail-on-severity high with CVE-2024-6387, got %d", gateCode)
+	}
+
+	// 3. Dedicated OSINT CLI subcommand & /api/osint web endpoint
+	ioCfg, out, errBuf = bufferIO()
+	osintCode := Run(ctx, []string{"osint", "127.0.0.1", "--json", "--timeout", "1200"}, ioCfg)
+	if osintCode != 0 || !strings.Contains(out.String(), `"targetType": "ip"`) {
+		t.Fatalf("unexpected osint CLI result: code=%d err=%s out=%s", osintCode, errBuf.String(), out.String())
+	}
+
+	srv, err := web.Start("127.0.0.1:0", "1.2.0")
+	if err != nil {
+		t.Fatalf("web.Start: %v", err)
+	}
+	defer func() {
+		shutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Close(shutCtx)
+	}()
+
+	apiResp, err := http.Post("http://"+srv.Addr()+"/api/osint", "application/json",
+		strings.NewReader(`{"query":"127.0.0.1","timeoutMs":1200}`))
+	if err != nil || apiResp.StatusCode != 200 {
+		t.Fatalf("POST /api/osint failed: %v", err)
+	}
+	var apiBuf bytes.Buffer
+	_, _ = apiBuf.ReadFrom(apiResp.Body)
+	_ = apiResp.Body.Close()
+	if !strings.Contains(apiBuf.String(), `"targetType":"ip"`) {
+		t.Fatalf("unexpected /api/osint payload: %s", apiBuf.String())
+	}
+}
