@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Sentinel Net
+GenericName=Scanner d'audit reseau defensif
+Comment=Audit d'exposition TCP, TLS et HTTP avec console locale
+Exec=sentinel-net gui
+TryExec=sentinel-net
+Icon=sentinel-net
+Terminal=true
+Categories=Network;Security;System;
+Keywords=network;security;scanner;tls;audit;ports;
+StartupNotify=false

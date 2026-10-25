@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+  <defs>
+    <linearGradient id="sn-bg" x1="40" y1="24" x2="472" y2="488" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#131938"/>
+      <stop offset="55%" stop-color="#0D1229"/>
+      <stop offset="100%" stop-color="#080C1C"/>
+    </linearGradient>
+    <linearGradient id="sn-hex" x1="84" y1="84" x2="428" y2="428" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#05F4FF"/>
+      <stop offset="48%" stop-color="#00B8FF"/>
+      <stop offset="100%" stop-color="#0055FF"/>
+    </linearGradient>
+    <linearGradient id="sn-ring" x1="134" y1="134" x2="378" y2="378" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2DF5FF"/>
+      <stop offset="55%" stop-color="#009EFF"/>
+      <stop offset="100%" stop-color="#0059EE"/>
+    </linearGradient>
+    <radialGradient id="sn-node" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#58FAFF"/>
+      <stop offset="55%" stop-color="#00AEFF"/>
+      <stop offset="100%" stop-color="#0052E8"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="url(#sn-bg)"/>
+
+  <path
+    fill="url(#sn-hex)"
+    fill-rule="evenodd"
+    d="M256 58L427.5 157V355L256 454L84.5 355V157L256 58ZM256 94L396.3 175V337L256 418L115.7 337V175L256 94Z"
+  />
+
+  <circle cx="256" cy="256" r="122" stroke="url(#sn-ring)" stroke-width="3.5" stroke-opacity="0.92"/>
+  <circle cx="256" cy="256" r="86" stroke="url(#sn-ring)" stroke-width="3" stroke-opacity="0.88"/>
+  <circle cx="256" cy="256" r="50" stroke="url(#sn-ring)" stroke-width="3" stroke-opacity="0.95"/>
+
+  <g stroke="url(#sn-hex)" stroke-width="4.5" stroke-linecap="round">
+    <line x1="264" y1="210" x2="214" y2="272"/>
+    <line x1="264" y1="210" x2="292" y2="280"/>
+    <line x1="256" y1="256" x2="264" y2="210"/>
+    <line x1="256" y1="256" x2="214" y2="272"/>
+    <line x1="256" y1="256" x2="292" y2="280"/>
+  </g>
+
+  <circle cx="264" cy="210" r="13.5" fill="url(#sn-node)"/>
+  <circle cx="214" cy="272" r="13.5" fill="url(#sn-node)"/>
+  <circle cx="292" cy="280" r="13.5" fill="url(#sn-node)"/>
+  <circle cx="256" cy="256" r="14.5" fill="url(#sn-node)"/>
+</svg>
