@@ -1,15 +1,48 @@
-name: tests
+name: CI
+
 on:
   push:
+    branches:
+      - main
+      - "arena/**"
   pull_request:
+
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  node-tests:
+  test-linux:
+    name: Vet & Race Tests (Linux)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
         with:
-          node-version: 20
-      - run: npm test
+          go-version: stable
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test (with race detector)
+        run: go test -v -race ./...
+
+  test-windows:
+    name: Vet & Tests (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -v ./...
