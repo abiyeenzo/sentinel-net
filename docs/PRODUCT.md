@@ -1,23 +1,15 @@
-# Vision produit — Sentinel Net
+# Vision Produit - Sentinel Net
 
-## Décision de nom
+## Objectif
 
-**Sentinel Net** est le nom retenu pour ce nouveau dépôt. Il décrit le rôle défensif et réseau du produit et est cohérent avec l'identifiant npm interne `sentinel-net`. Il n'est pas présenté comme une marque disponible : aucune recherche externe de marques, domaines ou collisions exhaustives n'a été effectuée. Vérification juridique et disponibilité des domaines restent à faire avant distribution commerciale.
+Fournir aux administrateurs systemes et equipes securite un binaire d'audit reseau leger, rapide, lisible et simple a faire evoluer, capable de tourner aussi bien dans un terminal, dans un pipeline CI/CD que via une console Web locale embarquee.
 
-## Vision et périmètre initial
+## Choix techniques structurants
 
-Outil local d'inventaire réseau destiné aux administrateurs autorisés. Le produit privilégie les observations explicables, les cibles explicitement saisies, les limites bornées et les résultats assortis de leur état/incertitude.
+1. **Go standard pur (`CGO_ENABLED=0`)** : compilation en une seconde vers un executable statique unique d'environ 8 Mo (`sentinel-net.exe` sous Windows, `sentinel-net` sous Linux/macOS), sans dependances externes a maintenir ni surface d'attaque logicielle tierce.
+2. **Explicabilite des constats** : chaque regle du moteur `internal/risk` cite la preuve reseau observee, documente les cas de faux positifs courants et indique la mesure de durcissement associee.
+3. **Fonctionnement hors-ligne** : aucun appel vers un service distant, aucune telemetrie, rapports HTML et console Web autonomes sans CDN externe.
 
-La première tranche fournit uniquement une tentative de connexion TCP vers une adresse IP littérale et au plus 32 ports choisis explicitement. Elle ne découvre pas automatiquement le réseau, n'utilise pas l'IA, ne déduit pas des vulnérabilités et n'exécute aucune exploitation.
+## Note juridique sur le nom
 
-## Principes
-
-1. Autorisation explicite et portée visible.
-2. Une observation n'est jamais une certitude au-delà de sa preuve.
-3. Pas de données fictives dans les résultats.
-4. Défauts de sécurité fermés, limites explicites.
-5. Architecture simple avant stockage, UI ou fonctions avancées.
-
-## Jalons
-
-Voir la roadmap du README. Le lot initial ne satisfait pas l'ambition enterprise : tests dans CI, revue indépendante, audit de sécurité, UX, stockage et packaging restent à accomplir.
+Sentinel Net designe ce depot logiciel et son binaire. Aucune verification d'anteriorite de marque commerciale ou de nom de domaine n'a ete realisee ; une validation juridique reste requise avant toute distribution commerciale sous ce nom.

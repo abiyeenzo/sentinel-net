@@ -1,0 +1,28 @@
+# Binaries and build outputs
+/bin/
+/dist/
+/build/
+/out/
+/sentinel-net
+/sentinel-net.exe
+*.exe
+*.zip
+
+# Go test and coverage artifacts
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Local scan outputs and baselines
+*.scan.json
+*.baseline.json
+*.report.html
+*.sarif
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*

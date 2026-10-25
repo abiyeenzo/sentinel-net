@@ -1,22 +1,20 @@
-# Sécurité et limites
+# Securite et Limites - Sentinel Net
 
-## Modèle d'utilisation
+## Cadre d'autorisation
 
-Outil pour opérateurs autorisés et environnements de laboratoire. L'utilisateur doit posséder ou être explicitement autorisé à tester chaque cible. Le drapeau CLI `--authorized` rend cette déclaration explicite ; il ne vérifie pas juridiquement les droits et ne constitue pas un mécanisme d'authentification.
+L'outil est destine exclusivement aux administrateurs et auditeurs disposant d'une autorisation explicite sur chaque cible.
+- En CLI, l'absence du drapeau `--authorized` interrompt l'execution avec le code `2` avant toute ouverture de socket.
+- Sur l'API locale `POST /api/scan`, le champ `authorized: true` est exige cote client et verifie cote serveur.
 
-## Contrôles présents
+## Garde-fous techniques
 
-- IP littérale obligatoire : hostname, CIDR et plages rejetés.
-- 1–32 ports uniques explicitement fournis.
-- Concurrence limitée à 8 et timeout borné à 5 s.
-- Annulation SIGINT via AbortController.
-- Aucun scan automatique, UDP, bannière, exploit, commande shell, collecte d'identifiants ou écriture distante.
-- Résultats non concluants qualifiés `unknown`.
+- **Perimetre borne** : CIDR IPv4 restreints a `/22`..`/32`, plafond `max-hosts` (256 par defaut, maximum 1024), rejet des adresses multicast, broadcast et non specifiees, resolution DNS desactivee par defaut.
+- **Concurrence et delais plafonnes** : `1..128` connexions simultanees, timeout `100..15000 ms`, option `--delay-ms` pour menager les equipements industriels ou anciens.
+- **Inspection en lecture seule** : aucune tentative de connexion applicative authentifiee, aucun test d'exploitation, lecture passive limitee a 512 octets sur les bannieres et requete `HEAD /` sur les ports Web.
+- **Neutralisation des donnees distantes** : `services.SanitizeText` retire les sequences d'echappement ANSI/CSI (`\x1b...`) et caracteres de controle avant affichage terminal ou journalisation ; tous les champs injectes dans les rapports HTML et la console Web sont echappes.
+- **Integrite des baselines** : chaque fichier genere par `--save-baseline` embarque un condensat `SHA-256` verifie au chargement.
 
-## Risques et limites connus
+## Limites connues
 
-Un scan produit du trafic réseau et peut être bloqué, journalisé ou affecter un service fragile. `unknown` ne distingue pas le filtrage d'une cible inaccessible. La limite de cible unique et du nombre de ports réduit l'ampleur mais ne prévient pas toute utilisation non autorisée. L'implémentation doit encore faire l'objet d'une revue indépendante, de CI et d'essais sur versions Node prises en charge. Aucun audit professionnel n'est affirmé.
-
-## Données
-
-Aucune persistance ou télémétrie. La sortie JSON inclut cible, date et observations ; l'opérateur est responsable du stockage qu'il choisit. Ne pas y ajouter de secrets.
+- Tout scan actif laisse des traces dans les journaux systeme et equipements de filtrage.
+- En mode `--tls`, le handshake accepte les certificats non reconnus afin d'en extraire les dates d'expiration et l'emetteur, puis execute une verification X.509 explicite contre le magasin systeme pour renseigner `authorized` et signaler les certificats auto-signes ou expires.

@@ -3,55 +3,161 @@ name: Build Windows EXE
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
+      - "arena/**"
     tags:
       - "v*"
+  pull_request:
 
 permissions:
   contents: write
 
+concurrency:
+  group: build-exe-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  build-windows-exe:
+    name: Build & Smoke Test sentinel-net.exe (Windows amd64)
     runs-on: windows-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-go@v7
         with:
-          node-version: 20
+          go-version: stable
 
-      - name: Tests
-        run: node --test
-
-      - name: Build exe (pkg)
+      - name: Run test suite
         run: |
-          npm install -g @yao-pkg/pkg
-          mkdir dist
-          pkg src/cli.js --targets node20-win-x64 --output dist/sentinel-net.exe
+          go vet ./...
+          go test -v ./...
 
-      - name: Smoke test (exe sans cible doit refuser de scanner)
+      - name: Build native sentinel-net.exe
         shell: pwsh
         run: |
-          ./dist/sentinel-net.exe
-          Write-Host "Exit code: $LASTEXITCODE"
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
 
-      - name: Checksums SHA-256
+          $ver = "1.0.0"
+          if ($env:GITHUB_REF -like "refs/tags/v*") {
+            $ver = $env:GITHUB_REF.Substring("refs/tags/v".Length)
+          }
+
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          $ldflags = "-s -w -X github.com/abiyeenzo/sentinel-net/internal/cli.Version=$ver"
+
+          go build -trimpath -ldflags="$ldflags" -o dist/sentinel-net.exe ./cmd/sentinel-net
+          Get-Item dist/sentinel-net.exe | Select-Object Name, Length
+
+      - name: Smoke tests on sentinel-net.exe
         shell: pwsh
         run: |
-          Copy-Item README.md dist/
-          Get-FileHash dist/sentinel-net.exe -Algorithm SHA256 |
-            ForEach-Object { "$($_.Hash.ToLower())  sentinel-net.exe" } |
-            Out-File -Encoding ascii dist/SHA256SUMS.txt
-          Get-Content dist/SHA256SUMS.txt
+          $ErrorActionPreference = 'Stop'
+          if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+            $PSNativeCommandUseErrorActionPreference = $false
+          }
 
-      - uses: actions/upload-artifact@v4
+          $exe = Join-Path $PWD "dist/sentinel-net.exe"
+
+          $verOut = & $exe --version
+          if ($LASTEXITCODE -ne 0 -or $verOut -notmatch "sentinel-net v") {
+            throw "Unexpected --version result (code=$LASTEXITCODE): $verOut"
+          }
+          Write-Host "Version check OK: $verOut"
+
+          $helpOut = (& $exe --help) -join "`n"
+          if ($LASTEXITCODE -ne 0 -or $helpOut -notmatch "USAGE:") {
+            throw "Unexpected --help result (code=$LASTEXITCODE)"
+          }
+
+          $unauthOut = (& $exe --target 127.0.0.1 --ports 80 2>&1) -join "`n"
+          if ($LASTEXITCODE -ne 2) {
+            throw "Expected exit code 2 without --authorized, got $LASTEXITCODE"
+          }
+          Write-Host "Authorization check OK (exit code 2)"
+
+          $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+          $listener.Start()
+          try {
+            $port = ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
+            $htmlFile = Join-Path $env:RUNNER_TEMP "smoke-report.html"
+            $jsonRaw = (& $exe scan --target 127.0.0.1 --ports "$port" --authorized --json --report-html "$htmlFile") -join "`n"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Loopback scan failed (code=$LASTEXITCODE): $jsonRaw"
+            }
+            $doc = $jsonRaw | ConvertFrom-Json
+            if ($doc.summary.openPorts -ne 1 -or $doc.observations[0].state -ne "open") {
+              throw "Unexpected scan output: $jsonRaw"
+            }
+            if (-not (Test-Path $htmlFile) -or (Get-Item $htmlFile).Length -lt 500) {
+              throw "HTML report was not generated properly"
+            }
+            Write-Host "Loopback scan OK on port $port ($($doc.observations[0].latencyMs) ms)"
+          } finally {
+            $listener.Stop()
+          }
+
+      - name: Package portable ZIP and SHA-256 checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Copy-Item README.md dist/README.md
+          Copy-Item LICENSE dist/LICENSE
+          Copy-Item docs/SECURITY.md dist/SECURITY.md
+
+          $zipPath = "dist/sentinel-net-win-x64.zip"
+          Compress-Archive -Path @(
+            "dist/sentinel-net.exe",
+            "dist/README.md",
+            "dist/LICENSE",
+            "dist/SECURITY.md"
+          ) -DestinationPath $zipPath -Force
+
+          Remove-Item dist/README.md, dist/LICENSE, dist/SECURITY.md
+
+          $lines = @()
+          foreach ($f in @("dist/sentinel-net.exe", $zipPath)) {
+            $h = (Get-FileHash $f -Algorithm SHA256).Hash.ToLower()
+            $n = Split-Path $f -Leaf
+            $lines += "$h  $n"
+          }
+          $lines | Out-File -Encoding ascii -FilePath "dist/SHA256SUMS.txt"
+          Get-Content "dist/SHA256SUMS.txt"
+
+          $exeMb = [math]::Round((Get-Item "dist/sentinel-net.exe").Length / 1MB, 2)
+          $zipMb = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
+          $exeHash = (Get-FileHash "dist/sentinel-net.exe" -Algorithm SHA256).Hash.ToLower()
+
+          @(
+            "### Sentinel Net Windows Build",
+            "",
+            "| Fichier | Taille | SHA-256 |",
+            "|---|---|---|",
+            "| ``sentinel-net.exe`` | $exeMb MB | ``$exeHash`` |",
+            "| ``sentinel-net-win-x64.zip`` | $zipMb MB | Voir ``SHA256SUMS.txt`` |"
+          ) | Out-File -Encoding utf8 -Append -FilePath $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
         with:
-          name: sentinel-net-windows
-          path: dist/
+          name: sentinel-net-windows-amd64
+          path: |
+            dist/sentinel-net.exe
+            dist/sentinel-net-win-x64.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
 
-      - name: Publier la release (tags v*)
+      - name: Publish GitHub Release (tags v*)
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
+          generate_release_notes: true
           files: |
             dist/sentinel-net.exe
+            dist/sentinel-net-win-x64.zip
             dist/SHA256SUMS.txt

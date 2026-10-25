@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sentinel Net - Console d'Audit Reseau</title>
+<style>
+  :root {
+    --bg: #080d18;
+    --panel: #101827;
+    --panel-alt: #0b1220;
+    --border: #1f2d46;
+    --text: #e5e7eb;
+    --muted: #8b9bb4;
+    --accent: #38bdf8;
+    --green: #10b981;
+    --amber: #f59e0b;
+    --orange: #f97316;
+    --red: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    line-height: 1.5;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  header.topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.85rem 1.5rem; background: var(--panel); border-bottom: 1px solid var(--border);
+    flex-wrap: wrap; gap: 0.75rem;
+  }
+  .brand { font-weight: 700; font-size: 1.05rem; letter-spacing: 0.02em; }
+  .brand span { color: var(--accent); }
+  .subtitle { font-size: 0.78rem; color: var(--muted); }
+  .status-tag {
+    font-size: 0.76rem; padding: 0.25rem 0.65rem; border-radius: 6px;
+    background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.35); color: #34d399;
+  }
+  .layout {
+    max-width: 1400px; margin: 0 auto; padding: 1.25rem 1.5rem;
+    display: grid; grid-template-columns: 360px 1fr; gap: 1.25rem; align-items: start;
+  }
+  @media (max-width: 1020px) { .layout { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1.15rem;
+  }
+  .section-head {
+    font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--accent); margin: 0 0 0.85rem;
+  }
+  label.lbl { display: block; font-size: 0.78rem; font-weight: 600; color: var(--muted); margin: 0.75rem 0 0.3rem; }
+  input[type="text"], input[type="number"], input[type="search"], select {
+    width: 100%; background: var(--panel-alt); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 0.52rem 0.7rem; font-size: 0.86rem; outline: none;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+  .chip {
+    background: var(--panel-alt); border: 1px solid var(--border); color: var(--muted);
+    padding: 0.24rem 0.55rem; border-radius: 5px; font-size: 0.74rem; cursor: pointer;
+  }
+  .chip:hover, .chip.active { border-color: var(--accent); color: var(--accent); }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; }
+  .checks { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; }
+  .chk { display: flex; gap: 0.5rem; align-items: flex-start; font-size: 0.82rem; cursor: pointer; padding: 0.3rem 0; }
+  .auth-note {
+    margin-top: 0.9rem; padding: 0.68rem; border-radius: 7px;
+    background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.35);
+    font-size: 0.79rem; color: #fde68a;
+  }
+  .actions { display: flex; gap: 0.5rem; margin-top: 0.95rem; }
+  button.btn {
+    border: 1px solid transparent; border-radius: 7px; padding: 0.6rem 0.95rem;
+    font-weight: 600; font-size: 0.85rem; cursor: pointer;
+  }
+  .btn-run { flex: 1; background: var(--accent); color: #061325; }
+  .btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-stop { background: rgba(239,68,68,0.16); color: #f87171; border-color: rgba(239,68,68,0.4); }
+  .btn-sm {
+    background: var(--panel-alt); color: var(--text); border-color: var(--border);
+    padding: 0.4rem 0.68rem; font-size: 0.76rem;
+  }
+  .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+  .prog { margin-top: 0.85rem; display: none; }
+  .prog.visible { display: block; }
+  .prog-bar { height: 7px; background: var(--panel-alt); border: 1px solid var(--border); border-radius: 99px; overflow: hidden; }
+  .prog-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.12s; }
+  .prog-meta { display: flex; justify-content: space-between; font-size: 0.74rem; color: var(--muted); margin-top: 0.3rem; }
+  .err-box {
+    display: none; margin-bottom: 1rem; padding: 0.75rem 0.95rem; border-radius: 8px;
+    background: rgba(239,68,68,0.14); border: 1px solid rgba(239,68,68,0.45); color: #fca5a5; font-size: 0.84rem;
+  }
+  .err-box.visible { display: block; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.85rem; margin-bottom: 1rem; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 9px; padding: 0.9rem 1rem; }
+  .kpi-lbl { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .kpi-val { font-size: 1.65rem; font-weight: 700; margin-top: 0.15rem; }
+  .kpi-sub { font-size: 0.75rem; color: var(--muted); margin-top: 0.1rem; }
+  .bar-top { display: flex; justify-content: space-between; align-items: center; gap: 0.65rem; flex-wrap: wrap; margin-bottom: 0.85rem; }
+  .tabs, .exports { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+  .tab {
+    background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+    padding: 0.45rem 0.85rem; border-radius: 7px; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+  }
+  .tab.active { color: var(--accent); border-color: var(--accent); background: rgba(56,189,248,0.1); }
+  .filters { display: flex; gap: 0.6rem; margin-bottom: 0.8rem; flex-wrap: wrap; }
+  .filters input { max-width: 280px; }
+  .filters select { max-width: 200px; }
+  table.tbl { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+  .tbl th, .tbl td { padding: 0.6rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+  .tbl th { font-size: 0.72rem; text-transform: uppercase; color: var(--muted); }
+  .badge { display: inline-block; padding: 0.12rem 0.48rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700; }
+  .b-open { background: rgba(16,185,129,0.18); color: #34d399; }
+  .b-closed { background: rgba(245,158,11,0.14); color: #fbbf24; }
+  .b-unknown { background: rgba(148,163,184,0.12); color: #94a3b8; }
+  .finding {
+    background: var(--panel-alt); border: 1px solid var(--border); border-left-width: 4px;
+    border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 0.65rem;
+  }
+  .sev-critical { border-left-color: var(--red); }
+  .sev-high { border-left-color: var(--orange); }
+  .sev-medium { border-left-color: var(--amber); }
+  .sev-low { border-left-color: var(--accent); }
+  .pill { font-size: 0.68rem; font-weight: 700; padding: 0.12rem 0.42rem; border-radius: 4px; text-transform: uppercase; }
+  .p-critical { background: var(--red); color: #fff; }
+  .p-high { background: var(--orange); color: #fff; }
+  .p-medium { background: var(--amber); color: #0f172a; }
+  .p-low { background: var(--accent); color: #082f49; }
+  .empty { text-align: center; padding: 2.5rem 1rem; color: var(--muted); font-size: 0.88rem; }
+  .pane { display: none; }
+  .pane.active { display: block; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div>
+    <div class="brand">SENTINEL <span>NET</span> <small class="mono" id="verTag"></small></div>
+    <div class="subtitle">Audit defensif d'exposition TCP / TLS / HTTP et suivi de baseline</div>
+  </div>
+  <div class="status-tag mono">Moteur Go natif actif</div>
+</header>
+
+<main class="layout">
+  <aside class="panel">
+    <div class="section-head">Configuration du scan</div>
+
+    <label class="lbl">Cible(s) IP, CIDR (/22-/32) ou plage</label>
+    <input type="text" id="targetInput" class="mono" value="127.0.0.1" placeholder="127.0.0.1, 192.168.1.0/24, 10.0.0.1-20" />
+    <div class="chips" id="nicChips"></div>
+
+    <label class="lbl">Profil de ports</label>
+    <div class="chips" id="profileChips"></div>
+
+    <label class="lbl">Ports additionnels ou personnalises</label>
+    <input type="text" id="portsInput" class="mono" placeholder="22,80,443,8000-8020" />
+
+    <div class="row-2">
+      <div>
+        <label class="lbl">Timeout (ms)</label>
+        <input type="number" id="timeoutInput" min="100" max="15000" value="800" />
+      </div>
+      <div>
+        <label class="lbl">Concurrence</label>
+        <input type="number" id="concurrencyInput" min="1" max="128" value="24" />
+      </div>
+    </div>
+
+    <label class="lbl">Options d'inspection</label>
+    <div class="checks">
+      <label class="chk"><input type="checkbox" id="chkBanner" checked /> <span>Lecture passive des bannieres TCP</span></label>
+      <label class="chk"><input type="checkbox" id="chkTls" checked /> <span>Audit certificats X.509 et version TLS</span></label>
+      <label class="chk"><input type="checkbox" id="chkHttp" checked /> <span>Audit en-tetes de securite HTTP (HEAD)</span></label>
+      <label class="chk"><input type="checkbox" id="chkResolve" /> <span>Autoriser la resolution DNS</span></label>
+    </div>
+
+    <div class="auth-note">
+      <label style="display:flex;gap:0.5rem;align-items:flex-start;cursor:pointer">
+        <input type="checkbox" id="chkAuthorized" style="margin-top:0.18rem" />
+        <span><strong>Autorisation :</strong> je confirme etre autorise a analyser les cibles indiquees.</span>
+      </label>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-run" id="runBtn">Lancer le scan</button>
+      <button class="btn btn-stop" id="stopBtn" style="display:none">Annuler</button>
+    </div>
+
+    <div class="prog" id="progBox">
+      <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+      <div class="prog-meta mono"><span id="progLabel">Preparation...</span><span id="progPct">0%</span></div>
+    </div>
+  </aside>
+
+  <section>
+    <div class="err-box" id="errBox"></div>
+
+    <div class="kpis">
+      <div class="kpi">
+        <div class="kpi-lbl">Score de posture</div>
+        <div class="kpi-val" id="kpiGrade" style="color:var(--muted)">n/a</div>
+        <div class="kpi-sub" id="kpiLevel">En attente</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-lbl">Ports ouverts</div>
+        <div class="kpi-val" id="kpiOpen" style="color:var(--green)">0</div>
+        <div class="kpi-sub" id="kpiProbes">0 sonde</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-lbl">Constats</div>
+        <div class="kpi-val" id="kpiFindings" style="color:var(--amber)">0</div>
+        <div class="kpi-sub" id="kpiBreakdown">Crit: 0 | Eleve: 0 | Moyen: 0</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-lbl">Latence RTT moy</div>
+        <div class="kpi-val" id="kpiRtt">n/a</div>
+        <div class="kpi-sub" id="kpiDur">Duree : n/a</div>
+      </div>
+    </div>
+
+    <div class="bar-top">
+      <div class="tabs">
+        <button class="tab active" data-tab="ports">Observations TCP</button>
+        <button class="tab" data-tab="findings">Constats & remediations</button>
+        <button class="tab" data-tab="drift">Baseline & derive</button>
+      </div>
+      <div class="exports" id="exportBar" style="display:none">
+        <button class="btn btn-sm" id="setBaselineBtn">Figer en baseline</button>
+        <button class="btn btn-sm" data-fmt="html">HTML</button>
+        <button class="btn btn-sm" data-fmt="sarif">SARIF</button>
+        <button class="btn btn-sm" data-fmt="json">JSON</button>
+        <button class="btn btn-sm" data-fmt="markdown">Markdown</button>
+        <button class="btn btn-sm" data-fmt="csv">CSV</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="pane active" id="pane-ports">
+        <div class="filters">
+          <input type="search" id="searchBox" placeholder="Filtrer IP, port, service..." />
+          <select id="stateSelect">
+            <option value="all">Tous les etats</option>
+            <option value="open">OPEN</option>
+            <option value="closed">CLOSED</option>
+            <option value="unknown">UNKNOWN</option>
+          </select>
+        </div>
+        <div id="portsWrap">
+          <div class="empty">Configurez une cible, cochez l'autorisation et lancez le scan.</div>
+        </div>
+      </div>
+
+      <div class="pane" id="pane-findings">
+        <div id="findingsWrap">
+          <div class="empty">Aucun scan execute dans cette session.</div>
+        </div>
+      </div>
+
+      <div class="pane" id="pane-drift">
+        <div id="driftWrap">
+          <div class="empty">Figez un resultat comme baseline pour comparer les prochains scans.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  let activeProfile = 'quick';
+  let currentReport = null;
+  let baselineReport = null;
+  let activeScanId = null;
+
+  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  function setError(msg) {
+    const el = document.getElementById('errBox');
+    if (!msg) { el.classList.remove('visible'); el.textContent = ''; return; }
+    el.textContent = msg;
+    el.classList.add('visible');
+  }
+
+  async function bootstrap() {
+    try {
+      const [hRes, iRes, pRes] = await Promise.all([
+        fetch('/api/health'),
+        fetch('/api/interfaces'),
+        fetch('/api/profiles')
+      ]);
+      const health = await hRes.json();
+      document.getElementById('verTag').textContent = 'v' + (health.version || '1.0.0');
+
+      const nics = await iRes.json();
+      const nicWrap = document.getElementById('nicChips');
+      const seen = new Set();
+      for (const nic of (nics.interfaces || [])) {
+        if (nic.family !== 'IPv4' || seen.has(nic.address)) continue;
+        seen.add(nic.address);
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'chip mono';
+        b.textContent = nic.interface + ': ' + nic.address;
+        b.onclick = () => { document.getElementById('targetInput').value = nic.address; };
+        nicWrap.appendChild(b);
+      }
+
+      const profs = await pRes.json();
+      const profWrap = document.getElementById('profileChips');
+      const list = [...(profs.profiles || []), { id: '', ports: [], description: 'Ports personnalises' }];
+      function drawProfiles() {
+        profWrap.innerHTML = '';
+        for (const p of list) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'chip' + (activeProfile === p.id ? ' active' : '');
+          b.textContent = p.id ? (p.id + ' (' + p.ports.length + ')') : 'custom';
+          b.title = p.description || '';
+          b.onclick = () => { activeProfile = p.id; drawProfiles(); };
+          profWrap.appendChild(b);
+        }
+      }
+      drawProfiles();
+    } catch (e) {
+      setError('Erreur d initialisation: ' + e.message);
+    }
+  }
+
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.pane').forEach(x => x.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('pane-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  document.getElementById('runBtn').addEventListener('click', async () => {
+    setError('');
+    if (!document.getElementById('chkAuthorized').checked) {
+      setError('Veuillez cocher la confirmation d autorisation explicite avant de scanner.');
+      return;
+    }
+
+    const body = {
+      authorized: true,
+      target: document.getElementById('targetInput').value.trim(),
+      profile: activeProfile || '',
+      ports: document.getElementById('portsInput').value.trim(),
+      timeoutMs: Number(document.getElementById('timeoutInput').value) || 800,
+      concurrency: Number(document.getElementById('concurrencyInput').value) || 24,
+      banner: document.getElementById('chkBanner').checked,
+      tls: document.getElementById('chkTls').checked,
+      http: document.getElementById('chkHttp').checked,
+      resolveDns: document.getElementById('chkResolve').checked,
+      baseline: baselineReport
+    };
+
+    const runBtn = document.getElementById('runBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const progBox = document.getElementById('progBox');
+    const progFill = document.getElementById('progFill');
+    const progLabel = document.getElementById('progLabel');
+    const progPct = document.getElementById('progPct');
+
+    runBtn.disabled = true;
+    stopBtn.style.display = '';
+    progBox.classList.add('visible');
+    progFill.style.width = '2%';
+    progLabel.textContent = 'Demarrage...';
+    progPct.textContent = '0%';
+
+    try {
+      const res = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        const errObj = await res.json().catch(() => ({ error: 'HTTP ' + res.status }));
+        throw new Error(errObj.error || 'Echec de la requete');
+      }
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const ev = JSON.parse(line);
+          if (ev.type === 'started') {
+            activeScanId = ev.scanId;
+          } else if (ev.type === 'progress') {
+            progFill.style.width = ev.percent + '%';
+            progPct.textContent = ev.percent + '%';
+            progLabel.textContent = ev.target + ':' + ev.port + ' (' + ev.state + ')';
+          } else if (ev.type === 'complete') {
+            currentReport = ev.report;
+            progFill.style.width = '100%';
+            progPct.textContent = '100%';
+            progLabel.textContent = 'Termine en ' + ev.report.summary.durationMs + ' ms';
+            renderAll(ev.report);
+          } else if (ev.type === 'error') {
+            throw new Error(ev.error);
+          }
+        }
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      activeScanId = null;
+      runBtn.disabled = false;
+      stopBtn.style.display = 'none';
+    }
+  });
+
+  document.getElementById('stopBtn').addEventListener('click', async () => {
+    if (!activeScanId) return;
+    await fetch('/api/scan/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scanId: activeScanId })
+    }).catch(() => {});
+  });
+
+  function obsSummary(o) {
+    const out = [];
+    if (o.service?.product) out.push(o.service.product);
+    if (o.inspection?.tls?.established) {
+      const c = o.inspection.tls.certificate;
+      out.push(o.inspection.tls.protocol + (c?.subjectCN ? ' CN=' + c.subjectCN : '') + (typeof c?.daysRemaining === 'number' ? ' (' + c.daysRemaining + 'j)' : ''));
+    }
+    if (o.inspection?.http?.statusCode) {
+      const m = o.inspection.http.missingSecurityHeaders?.length || 0;
+      out.push('HTTP ' + o.inspection.http.statusCode + (m > 0 ? ' (-' + m + ' sec-hdr)' : ' (headers ok)'));
+    }
+    if (o.inspection?.banner && !o.service?.product) out.push(o.inspection.banner);
+    return out.join(' | ') || o.service?.description || '';
+  }
+
+  function renderAll(rep) {
+    document.getElementById('exportBar').style.display = 'flex';
+    const r = rep.risk;
+    const s = rep.summary;
+    const gEl = document.getElementById('kpiGrade');
+    gEl.textContent = r.grade + ' (' + r.score + '/100)';
+    gEl.style.color = r.score >= 88 ? 'var(--green)' : r.score >= 60 ? 'var(--amber)' : 'var(--red)';
+    document.getElementById('kpiLevel').textContent = 'Risque ' + r.level.toUpperCase();
+    document.getElementById('kpiOpen').textContent = s.openPorts;
+    document.getElementById('kpiProbes').textContent = s.totalProbes + ' sondes sur ' + s.hostsScanned + ' hote(s)';
+    document.getElementById('kpiFindings').textContent = r.actionableFindings;
+    document.getElementById('kpiBreakdown').textContent = 'Crit: ' + r.counts.critical + ' | Eleve: ' + r.counts.high + ' | Moyen: ' + r.counts.medium;
+    document.getElementById('kpiRtt').textContent = s.latency?.avgMs != null ? (s.latency.avgMs + ' ms') : 'n/a';
+    document.getElementById('kpiDur').textContent = 'Duree: ' + s.durationMs + ' ms (P95: ' + (s.latency?.p95Ms ?? 'n/a') + ' ms)';
+
+    renderPorts();
+    renderFindings(r.findings || []);
+    renderDrift(rep.drift);
+  }
+
+  function renderPorts() {
+    if (!currentReport) return;
+    const q = document.getElementById('searchBox').value.trim().toLowerCase();
+    const st = document.getElementById('stateSelect').value;
+    const rows = [];
+    for (const h of (currentReport.hosts || [])) {
+      for (const o of (h.observations || [])) {
+        const detail = o.state === 'open' ? obsSummary(o) : ('reason=' + o.reason);
+        const hay = (h.target + ' ' + o.port + ' ' + (o.service?.label || '') + ' ' + detail).toLowerCase();
+        if (st !== 'all' && o.state !== st) continue;
+        if (q && !hay.includes(q)) continue;
+        const cls = o.state === 'open' ? 'b-open' : o.state === 'closed' ? 'b-closed' : 'b-unknown';
+        rows.push(
+          '<tr>' +
+          '<td class="mono">' + esc(h.target) + (h.hostname ? ' <span style="color:var(--muted)">(' + esc(h.hostname) + ')</span>' : '') + '</td>' +
+          '<td class="mono"><strong>' + o.port + '</strong>/tcp</td>' +
+          '<td><span class="badge ' + cls + '">' + esc(o.state.toUpperCase()) + '</span></td>' +
+          '<td class="mono">' + o.latencyMs + ' ms</td>' +
+          '<td>' + esc(o.service?.label || ('TCP/' + o.port)) + '</td>' +
+          '<td style="color:var(--muted);font-size:0.8rem">' + esc(detail) + '</td>' +
+          '</tr>'
+        );
+      }
+    }
+    document.getElementById('portsWrap').innerHTML = rows.length
+      ? '<table class="tbl"><thead><tr><th>Hote</th><th>Port</th><th>Etat</th><th>RTT</th><th>Service</th><th>Details</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>'
+      : '<div class="empty">Aucune observation ne correspond au filtre.</div>';
+  }
+
+  document.getElementById('searchBox').addEventListener('input', renderPorts);
+  document.getElementById('stateSelect').addEventListener('change', renderPorts);
+
+  function renderFindings(list) {
+    const act = list.filter(f => f.severity !== 'info');
+    if (!act.length) {
+      document.getElementById('findingsWrap').innerHTML = '<div class="empty" style="color:var(--green)">[OK] Aucun constat critique, eleve, moyen ou faible.</div>';
+      return;
+    }
+    document.getElementById('findingsWrap').innerHTML = act.map(f =>
+      '<div class="finding sev-' + esc(f.severity) + '">' +
+        '<div style="display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap;margin-bottom:0.35rem">' +
+          '<span class="pill p-' + esc(f.severity) + '">' + esc(f.severity) + '</span>' +
+          '<span class="mono" style="color:var(--muted);font-size:0.78rem">' + esc(f.ruleId) + '</span>' +
+          '<span class="mono" style="color:var(--accent);font-weight:600">' + esc(f.host + ':' + f.port) + '</span>' +
+          '<strong>' + esc(f.title) + '</strong>' +
+        '</div>' +
+        '<div style="font-size:0.83rem;margin:0.2rem 0"><strong>Preuve :</strong> ' + esc(f.evidence) + '</div>' +
+        '<div style="font-size:0.83rem;margin:0.2rem 0"><strong>Remediation :</strong> ' + esc(f.remediation) + '</div>' +
+        '<div style="font-size:0.76rem;color:var(--muted)">Confiance ' + esc(f.confidence) + ' - ' + esc(f.falsePositiveNote) + '</div>' +
+      '</div>'
+    ).join('');
+  }
+
+  function renderDrift(drift) {
+    const el = document.getElementById('driftWrap');
+    if (!baselineReport && !drift) {
+      el.innerHTML = '<div class="empty">Cliquez sur "Figer en baseline" pour suivre les changements entre deux scans.</div>';
+      return;
+    }
+    if (!drift) {
+      el.innerHTML = '<div class="empty" style="color:var(--accent)">Baseline active (' + esc(baselineReport.startedAt) + '). Lancez un nouveau scan pour comparer.</div>';
+      return;
+    }
+    if (!drift.hasDrift) {
+      el.innerHTML = '<div class="empty" style="color:var(--green)">[OK] Aucune derive detectee par rapport a la baseline.</div>';
+      return;
+    }
+    const cards = [];
+    for (const o of (drift.newlyOpened || [])) {
+      cards.push('<div class="finding sev-critical"><strong>[+ OPEN]</strong> <span class="mono">' + esc(o.host + ':' + o.port) + '</span> (' + esc(o.service) + ') - etat precedent: ' + esc(o.previousState) + '</div>');
+    }
+    for (const c of (drift.newlyClosed || [])) {
+      cards.push('<div class="finding sev-low"><strong>[- CLOSED]</strong> <span class="mono">' + esc(c.host + ':' + c.port) + '</span> (' + esc(c.previousService) + ')</div>');
+    }
+    for (const m of (drift.serviceChanges || [])) {
+      cards.push('<div class="finding sev-medium"><strong>[~ CHANGE ' + esc(m.kind) + ']</strong> <span class="mono">' + esc(m.host + ':' + m.port) + '</span> : ' + esc(m.before) + ' -> ' + esc(m.after) + '</div>');
+    }
+    el.innerHTML = cards.join('');
+  }
+
+  document.getElementById('setBaselineBtn').addEventListener('click', () => {
+    if (!currentReport) return;
+    baselineReport = currentReport;
+    renderDrift(null);
+    document.querySelector('[data-tab="drift"]').click();
+  });
+
+  document.querySelectorAll('[data-fmt]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!currentReport) return;
+      const fmt = btn.dataset.fmt;
+      const res = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format: fmt, report: currentReport })
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const exts = { html: 'html', sarif: 'sarif.json', json: 'json', markdown: 'md', csv: 'csv' };
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'sentinel-net-report.' + (exts[fmt] || fmt);
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  });
+
+  bootstrap();
+</script>
+</body>
+</html>
