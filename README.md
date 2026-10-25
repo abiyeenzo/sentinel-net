@@ -10,90 +10,119 @@
   <a href="https://github.com/abiyeenzo/sentinel-net/releases/latest"><img src="https://img.shields.io/github/v/release/abiyeenzo/sentinel-net?label=Release" alt="Latest Release" /></a>
 </p>
 
-Scanner d'audit reseau defensif autonome ecrit en **Go** (bibliotheque standard uniquement, aucune dependance externe, aucun runtime a installer). Disponible sous forme d'executables natifs et d'installateurs prets a l'emploi pour **Windows**, **macOS** et **Linux**, utilisable aussi bien en interface graphique locale (double-clic ou `sentinel-net gui`) qu'en ligne de commande.
+Scanner d'audit reseau defensif autonome ecrit en **Go** (bibliotheque standard uniquement, aucune dependance externe, aucun runtime a installer). Il combine une **interface graphique de bureau inspiree de Zenmap** et une **ligne de commande directe inspiree de Nmap**, sur **Windows**, **macOS** et **Linux**.
 
-> **Usage responsable :** Sentinel Net emet du trafic TCP actif vers les cibles indiquees. Utilisez-le uniquement sur des equipements et reseaux dont vous avez la responsabilite ou une autorisation ecrite explicite (`--authorized`).
+> **Usage responsable :** Sentinel Net emet du trafic TCP actif vers les cibles indiquees. Utilisez-le uniquement sur des equipements et reseaux dont vous avez la responsabilite ou une autorisation ecrite explicite (`-y` ou `--authorized`).
 
-## Telechargement et installation (sans Go ni dependances)
+---
 
-Tous les binaires precompiles et installateurs verifies par empreinte `SHA256SUMS.txt` sont disponibles sur la page **[GitHub Releases](https://github.com/abiyeenzo/sentinel-net/releases/latest)**.
+## Telechargement et installation (Windows, macOS, Linux)
+
+Tous les executables et installateurs precompiles (avec empreintes `SHA256SUMS.txt`) sont disponibles sur **[GitHub Releases](https://github.com/abiyeenzo/sentinel-net/releases/latest)**.
 
 ### Windows (x64 & ARM64)
 
-Trois options au choix sans droits administrateur requis :
-
-1. **Installateur graphique Windows (`sentinel-net-setup-windows-amd64.exe`)** : installe l'application avec son icone, cree les raccourcis Bureau / Menu Demarrer et configure automatiquement le `PATH` utilisateur.
-2. **Executable portable direct (`sentinel-net-windows-amd64.exe`)** : un seul fichier `.exe` (~7.8 Mo) avec icone integree. Un double-clic dans l'Explorateur Windows demarre directement la console graphique dans le navigateur.
+1. **Installateur graphique (`sentinel-net-setup-windows-amd64.exe`)** : installe l'interface graphique (`sentinel-net-gui.exe` sans fenetre console) et la CLI (`sentinel-net.exe`), cree les raccourcis Bureau / Menu Demarrer avec icone et configure automatiquement le `PATH`.
+2. **Executable graphique portable (`sentinel-net-gui-windows-amd64.exe`)** : un seul `.exe` a lancer par double-clic, sans installation.
 3. **Installation en une ligne PowerShell** :
 
 ```powershell
 irm https://raw.githubusercontent.com/abiyeenzo/sentinel-net/main/scripts/install.ps1 | iex
 ```
 
-### macOS (Apple Silicon M1/M2/M3/M4 & Intel)
+### macOS (Apple Silicon & Intel)
 
-1. **Image disque macOS (`Sentinel-Net-macOS-universal.dmg`)** : binaire universel (`arm64` + `x86_64`) empaquete dans `Sentinel Net.app`. Ouvrez le `.dmg`, glissez `Sentinel Net.app` dans `Applications` et double-cliquez dessus.
-2. **Installation CLI en une ligne (macOS & Linux)** :
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/abiyeenzo/sentinel-net/main/scripts/install.sh | sh
-```
-
-### Linux (Debian / Ubuntu / Kali & binaires statiques x64 / ARM64)
-
-1. **Paquet natif `.deb` (`sentinel-net_1.0.0_amd64.deb` ou `arm64.deb`)** : ajoute `/usr/bin/sentinel-net`, l'icone vectorielle et le lanceur d'application bureau.
-
-```bash
-sudo apt install ./sentinel-net_1.0.0_amd64.deb
-```
-
-2. **Installation rapide en une ligne (toutes distributions Linux)** :
+1. **Application native macOS (`Sentinel-Net-macOS-universal.dmg`)** : glissez `Sentinel Net.app` dans `Applications` et ouvrez-la comme n'importe quelle application macOS (fenetre Cocoa `WKWebView` universelle `arm64` + `x86_64`).
+2. **Installation CLI en une ligne** :
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/abiyeenzo/sentinel-net/main/scripts/install.sh | sh
 ```
 
-3. **Binaire statique direct (`sentinel-net-linux-amd64` / `sentinel-net-linux-arm64`)** : `CGO_ENABLED=0`, fonctionne sur n'importe quel noyau Linux (glibc, musl, Alpine, Debian, Fedora, Arch).
+### Linux (Debian / Ubuntu / Kali & binaires statiques)
 
-## Capacites principales
-
-- **Double mode d'utilisation (GUI + CLI)** : double-cliquez sur l'executable (ou lancez `sentinel-net gui`) pour ouvrir l'interface graphique Web locale, ou appelez `sentinel-net scan` dans un terminal ou pipeline CI/CD.
-- **Ciblage borne (`internal/netscope`)** : IPv4, IPv6, blocs CIDR IPv4 (`/22` a `/32`), plages IPv4 (`192.168.1.1-50` ou `10.0.0.1-10.0.0.30`), fichiers de cibles (`--targets-file`), decouverte des interfaces locales (`interfaces`) et resolution DNS optionnelle (`--resolve`).
-- **Profils et plages de ports (`internal/profiles`)** : 7 profils integres (`quick`, `web`, `infra`, `database`, `containers`, `iot`, `top100`) et support des plages (`-p 22,80,443,8000-8050`).
-- **Moteur TCP concurrent (`internal/scanner`)** : pool de workers borne (`1..128`), mesure RTT en millisecondes (`min`, `avg`, `p95`, `max`), tentatives (`--retries`), delai inter-sondes (`--delay-ms`) et annulation immediate par `context.Context` / `SIGINT`.
-- **Qualification fidele des etats** :
-  - `open` : connexion TCP etablie (`SYN-ACK`).
-  - `closed` : refus explicite (`RST` / `ECONNREFUSED`).
-  - `unknown` : delai depasse ou hote injoignable (ne confond jamais un filtrage silencieux avec un port ferme).
-- **Inspection non-intrusive (`internal/inspector`, `internal/services`)** :
-  - Lecture passive de banniere TCP (512 octets max) avec filtrage des sequences ANSI et caracteres de controle.
-  - Audit du handshake TLS et du certificat X.509 (`TLSv1.0` a `TLSv1.3`, CN/SAN, auto-signature, empreinte SHA-256, jours avant expiration).
-  - Requete `HEAD /` HTTP/HTTPS controlant `Strict-Transport-Security`, `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options` et les en-tetes `Server` / `X-Powered-By`.
-- **Evaluation de posture et suivi de derive (`internal/risk`, `internal/baseline`)** :
-  - Score `0-100` (note `A+` a `F`) et 15 regles explicables (`SN-CRIT-001` a `SN-INFO-001`) avec preuves et remediations.
-  - Snapshots baseline signes `SHA-256` (`--save-baseline`) et comparaison differentielle (`--compare`, `diff`) avec codes de retour CI (`--fail-on-drift`, `--fail-on-severity`).
-- **Rapports multi-formats (`internal/report`, `internal/web`)** : `table`, `json`, `sarif` (SARIF 2.1.0), `markdown`, `csv` et `html` autonome.
-
-## Exemples d'utilisation
+1. **Paquet bureau & CLI `.deb` (`sentinel-net_1.1.0_amd64.deb` ou `arm64.deb`)** :
 
 ```bash
-# Ouvrir directement l'interface graphique dans le navigateur par defaut
+sudo apt install ./sentinel-net_1.1.0_amd64.deb
+```
+
+2. **Installation rapide toutes distributions** :
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/abiyeenzo/sentinel-net/main/scripts/install.sh | sh
+```
+
+---
+
+## Interface graphique (style Zenmap)
+
+Lancez l'application depuis son icone Bureau / Applications, ou via la commande :
+
+```bash
 sentinel-net gui
-
-# Lister les interfaces reseau locales
-sentinel-net interfaces
-
-# Audit rapide avec inspection banniere + TLS + HTTP
-sentinel-net scan --target 127.0.0.1 --profile quick --inspect --authorized
-
-# Audit d'un sous-reseau /24 avec rapport HTML autonome et export SARIF
-sentinel-net scan -t 192.168.1.0/24 --profile infra --tls --http --authorized \
-  --report-html audit.html --format sarif -o findings.sarif
-
-# Enregistrer une baseline puis verifier l'absence de derive
-sentinel-net scan -t 127.0.0.1 -p 22,80,443 --authorized --save-baseline base.json
-sentinel-net scan -t 127.0.0.1 -p 22,80,443 --authorized --compare base.json --fail-on-drift
 ```
+
+L'interface graphique regroupe :
+- **Barre de commande synchronisee** : choix de la cible, du profil (`Scan rapide (-F)`, `Audit complet (-A)`, `Web`, `Bases de donnees`, `Infrastructure`, `IoT`), de la cadence (`-T1` a `-T5`) et apercu modifiable de la commande exacte.
+- **Arbre lateral Hotes / Services / Interfaces** : filtrage en un clic par machine decouverte, par service ouvert ou selection directe de vos sous-reseaux locaux `/24`.
+- **Cinq vues complementaires** : **Sortie Nmap**, **Ports / Hotes**, **Topologie** (carte radiale interactive SVG), **Risques & Details** (score `/100`, certificats TLS X.509, en-tetes HTTP, comparaison baseline) et **Guide CLI**.
+
+---
+
+## Commandes simples en terminal (style Nmap)
+
+Consultez le **[Guide complet des commandes (`docs/CLI.md`)](docs/CLI.md)** pour toutes les options et equivalences Nmap.
+
+```bash
+# Scan standard des 95 ports courants sur un hote
+sentinel-net 192.168.1.1 -y
+
+# Scan rapide des 18 ports critiques (-F)
+sentinel-net -F 192.168.1.1 -y
+
+# Scanner un sous-reseau /24 rapidement (-T4) et n'afficher que les ports ouverts (--open)
+sentinel-net -F -T4 --open 192.168.1.0/24 -y
+
+# Detection des services et bannieres sur des ports precis (-sV -p)
+sentinel-net -sV -p 22,80,443,3306,5432 10.0.0.5 -y
+
+# Audit complet tout-en-un : banniere + certificat TLS X.509 + en-tetes HTTP (-A)
+sentinel-net -A 10.0.0.5 -y
+
+# Profil metier cible (quick, web, database, infra, containers, iot, top100)
+sentinel-net -P database -sV 10.0.0.1-30 -y
+
+# Generer tous les formats d'un coup : .txt (Nmap), .json, .html et .sarif (-oA)
+sentinel-net -A 192.168.1.10 -oA rapport-audit -y
+
+# Enregistrer une baseline signee SHA-256 puis controler toute derive d'ouverture
+sentinel-net -F 10.0.0.5 --save-baseline base.json -y
+sentinel-net -F 10.0.0.5 --compare base.json --fail-on-drift -y
+```
+
+### Raccourcis essentiels
+
+| Option | Role |
+|---|---|
+| `-y`, `--authorized` | Confirme l'autorisation explicite d'auditer la cible (obligatoire) |
+| `-F` | Scan rapide (`quick`, 18 ports critiques) |
+| `-p <spec>` / `-p-` | Ports ou plages (`-p 22,80,8000-8050`) ou plage `1-4096` (`-p-`) |
+| `--top-ports <N>` | Scanne les `N` ports les plus courants (`1` a `95`) |
+| `-P <profil>` | Profil metier (`web`, `database`, `infra`, `containers`, `iot`, `top100`) |
+| `-sV` | Lecture passive de banniere et detection de version |
+| `-sC` | Verification non-intrusive TLS X.509 + en-tetes de securite HTTP |
+| `-A` | Audit complet (`-sV` + TLS + HTTP) |
+| `-T1` .. `-T5` | Cadence d'execution (`-T1` prudent a `-T5` local tres rapide) |
+| `-iL <fichier>` | Charge une liste de cibles depuis un fichier texte |
+| `-R` / `-n` | Active (`-R`) ou desactive (`-n`) la resolution DNS |
+| `--open` | Affiche uniquement les ports `open` |
+| `--nmap` | Affiche la sortie console au format texte Nmap |
+| `-oN` / `-oJ` / `-oH` / `-oS` | Sauvegarde en texte Nmap, JSON, HTML autonome ou SARIF |
+| `-oA <prefixe>` | Genere simultanement `.txt`, `.json`, `.html` et `.sarif` |
+| `gui` | Ouvre l'interface graphique de bureau |
+
+---
 
 ## Compilation depuis les sources (optionnel)
 
@@ -104,43 +133,9 @@ make test
 make build-all
 ```
 
-Pour regenerer `assets/icon.ico` et les ressources PE Windows `.syso` apres modification de `assets/logo.png` :
+## Documentation
 
-```bash
-make icons
-```
-
-## Codes de sortie
-
-| Code | Signification |
-|---|---|
-| `0` | Execution terminee sans erreur ni violation de politique |
-| `2` | Parametres invalides ou absence du drapeau `--authorized` |
-| `3` | Violation d'un seuil CI (`--fail-on-drift` ou `--fail-on-severity`) |
-| `130` | Annulation par signal (`SIGINT` / `SIGTERM`) |
-
-## Structure du projet
-
-```text
-assets/                         Logos (logo.svg, logo.png) et icone Windows multi-tailles (icon.ico)
-cmd/sentinel-net/               Point d'entree Go et ressources PE Windows (.syso)
-internal/
-  cli/                          Commandes CLI, mode bureau double-clic (gui) et codes retour
-  netscope/                     Validation IPv4/IPv6, CIDR, plages, DNS opt-in, interfaces
-  profiles/                     Profils de ports predefinis
-  services/                     Catalogue de services TCP et nettoyage ANSI des bannieres
-  scanner/                      Pool de workers TCP, statistiques RTT et annulation context
-  inspector/                    Sondes passives banniere, TLS X.509 et en-tetes HTTP
-  risk/                         Regles deterministes SN-* et calcul du score de posture
-  baseline/                     Integrite SHA-256 et comparaison de derive
-  report/                       Generateurs table, json, sarif, markdown, csv et html
-  web/                          Serveur HTTP local et interface embarquee avec logo (go:embed)
-packaging/                      Installateur Windows NSIS (.nsi), bundle macOS (.plist), Linux (.desktop)
-scripts/                        Scripts d'installation en une ligne (install.sh, install.ps1)
-```
-
-## Documentation complementaire
-
+- [Guide complet CLI & Interface Graphique (style Nmap/Zenmap)](docs/CLI.md)
 - [Architecture technique](docs/ARCHITECTURE.md)
 - [Positionnement produit](docs/PRODUCT.md)
 - [Politique de securite](docs/SECURITY.md)

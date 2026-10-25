@@ -193,7 +193,67 @@ func TestWebConsoleServerEndpoints(t *testing.T) {
 	var buf bytes.Buffer
 	_, _ = buf.ReadFrom(scanResp.Body)
 	_ = scanResp.Body.Close()
-	if !strings.Contains(buf.String(), `"type":"complete"`) {
-		t.Fatalf("expected complete NDJSON event, got %s", buf.String())
+	if !strings.Contains(buf.String(), `"type":"complete"`) || !strings.Contains(buf.String(), `"nmapOutput"`) {
+		t.Fatalf("expected complete NDJSON event with nmapOutput, got %s", buf.String())
+	}
+}
+
+func TestNmapStyleCLIAndMultiOutput(t *testing.T) {
+	ctx := context.Background()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_, _ = c.Write([]byte("SSH-2.0-OpenSSH_9.8\r\n"))
+			_ = c.Close()
+		}
+	}()
+	openPort := ln.Addr().(*net.TCPAddr).Port
+
+	// Compact Nmap syntax: -sV -T4 -p<port> --nmap <target> -y
+	ioCfg, out, errBuf := bufferIO()
+	code := Run(ctx, []string{
+		"-sV",
+		"-T4",
+		"-p" + strconv.Itoa(openPort),
+		"--nmap",
+		"127.0.0.1",
+		"-y",
+	}, ioCfg)
+	if code != 0 {
+		t.Fatalf("expected exit 0 on Nmap shorthand, got %d (stderr=%s)", code, errBuf.String())
+	}
+	if !strings.Contains(out.String(), "Sentinel Net scan report for 127.0.0.1") ||
+		!strings.Contains(out.String(), "|_ banner: SSH-2.0-OpenSSH_9.8") {
+		t.Fatalf("unexpected Nmap formatted output:\n%s", out.String())
+	}
+
+	// -oA writes .txt, .json, .html, and .sarif simultaneously
+	tmpDir := t.TempDir()
+	prefix := filepath.Join(tmpDir, "audit-all")
+	ioCfg, _, errBuf = bufferIO()
+	code = Run(ctx, []string{
+		"-A",
+		"--top-ports", "5",
+		"127.0.0.1",
+		"-oA", prefix,
+		"-y",
+	}, ioCfg)
+	if code != 0 {
+		t.Fatalf("expected exit 0 on -oA, got %d (stderr=%s)", code, errBuf.String())
+	}
+	for _, ext := range []string{".txt", ".json", ".html", ".sarif"} {
+		st, statErr := os.Stat(prefix + ext)
+		if statErr != nil || st.Size() == 0 {
+			t.Fatalf("expected non-empty %s file, err=%v", prefix+ext, statErr)
+		}
 	}
 }
