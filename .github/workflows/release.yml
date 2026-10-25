@@ -31,7 +31,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path dist | Out-Null
 
-          $version = "1.0.0"
+          $version = "1.1.0"
           if ($env:GITHUB_REF_NAME -match "^v(\d+\.\d+\.\d+.*)") {
             $version = $Matches[1]
           }
@@ -42,11 +42,15 @@ jobs:
 
           $env:GOARCH = "amd64"
           go build -trimpath -ldflags="-s -w -X github.com/abiyeenzo/sentinel-net/internal/cli.Version=$version" -o dist\sentinel-net-windows-amd64.exe .\cmd\sentinel-net
-          if ($LASTEXITCODE -ne 0) { throw "go build windows/amd64 failed" }
+          if ($LASTEXITCODE -ne 0) { throw "go build cli windows/amd64 failed" }
+          go build -trimpath -ldflags="-s -w -H=windowsgui -X github.com/abiyeenzo/sentinel-net/internal/cli.Version=$version" -o dist\sentinel-net-gui-windows-amd64.exe .\cmd\sentinel-net-gui
+          if ($LASTEXITCODE -ne 0) { throw "go build gui windows/amd64 failed" }
 
           $env:GOARCH = "arm64"
           go build -trimpath -ldflags="-s -w -X github.com/abiyeenzo/sentinel-net/internal/cli.Version=$version" -o dist\sentinel-net-windows-arm64.exe .\cmd\sentinel-net
-          if ($LASTEXITCODE -ne 0) { throw "go build windows/arm64 failed" }
+          if ($LASTEXITCODE -ne 0) { throw "go build cli windows/arm64 failed" }
+          go build -trimpath -ldflags="-s -w -H=windowsgui -X github.com/abiyeenzo/sentinel-net/internal/cli.Version=$version" -o dist\sentinel-net-gui-windows-arm64.exe .\cmd\sentinel-net-gui
+          if ($LASTEXITCODE -ne 0) { throw "go build gui windows/arm64 failed" }
 
       - name: Smoke test Windows amd64 executable
         shell: pwsh
@@ -87,6 +91,7 @@ jobs:
             $stage = "dist\pkg-win-$arch"
             New-Item -ItemType Directory -Force -Path $stage | Out-Null
             Copy-Item "dist\sentinel-net-windows-$arch.exe" "$stage\sentinel-net.exe"
+            Copy-Item "dist\sentinel-net-gui-windows-$arch.exe" "$stage\sentinel-net-gui.exe"
             Copy-Item README.md "$stage\README.md"
             Copy-Item LICENSE "$stage\LICENSE"
             Compress-Archive -Path "$stage\*" -DestinationPath "dist\sentinel-net-windows-$arch.zip" -Force
@@ -112,7 +117,9 @@ jobs:
           name: stage-windows
           path: |
             dist/sentinel-net-windows-amd64.exe
+            dist/sentinel-net-gui-windows-amd64.exe
             dist/sentinel-net-windows-arm64.exe
+            dist/sentinel-net-gui-windows-arm64.exe
             dist/sentinel-net-setup-windows-amd64.exe
             dist/sentinel-net-windows-amd64.zip
             dist/sentinel-net-windows-arm64.zip
@@ -136,7 +143,7 @@ jobs:
           set -euo pipefail
           mkdir -p dist
 
-          VERSION="1.0.0"
+          VERSION="1.1.0"
           if [[ "${GITHUB_REF_NAME}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+.*) ]]; then
             VERSION="${BASH_REMATCH[1]}"
           fi
@@ -226,7 +233,7 @@ jobs:
           set -euo pipefail
           mkdir -p dist
 
-          VERSION="1.0.0"
+          VERSION="1.1.0"
           if [[ "${GITHUB_REF_NAME}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+.*) ]]; then
             VERSION="${BASH_REMATCH[1]}"
           fi
@@ -267,17 +274,14 @@ jobs:
           cp assets/logo.png "${ICONSET}/icon_512x512.png"
           iconutil -c icns "${ICONSET}" -o "${WORK_DIR}/icon.icns"
 
-          # Assemble Sentinel Net.app bundle
+          # Assemble Sentinel Net.app bundle with native Cocoa WKWebView window host
           DMG_STAGE="${WORK_DIR}/dmg"
           APP_DIR="${DMG_STAGE}/Sentinel Net.app"
           mkdir -p "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources"
           cp "${UNIV_BIN}" "${APP_DIR}/Contents/MacOS/sentinel-net"
-          cat > "${APP_DIR}/Contents/MacOS/sentinel-net-app" <<'LAUNCHER'
-          #!/bin/sh
-          DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-          exec "${DIR}/sentinel-net" gui
-          LAUNCHER
-          sed -i '' 's/^          //' "${APP_DIR}/Contents/MacOS/sentinel-net-app"
+          clang -arch arm64 -arch x86_64 -Os -mmacosx-version-min=11.0 \
+            -framework Cocoa -framework WebKit \
+            -o "${APP_DIR}/Contents/MacOS/sentinel-net-app" packaging/macos/webview_app.m
           chmod 0755 "${APP_DIR}/Contents/MacOS/sentinel-net-app"
           sed "s/__VERSION__/${VERSION}/g" packaging/macos/Info.plist > "${APP_DIR}/Contents/Info.plist"
           cp "${WORK_DIR}/icon.icns" "${APP_DIR}/Contents/Resources/icon.icns"

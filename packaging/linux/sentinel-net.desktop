@@ -2,11 +2,11 @@
 Type=Application
 Name=Sentinel Net
 GenericName=Scanner d'audit reseau defensif
-Comment=Audit d'exposition TCP, TLS et HTTP avec console locale
+Comment=Interface graphique et audit d'exposition TCP, TLS et HTTP
 Exec=sentinel-net gui
 TryExec=sentinel-net
 Icon=sentinel-net
-Terminal=true
+Terminal=false
 Categories=Network;Security;System;
-Keywords=network;security;scanner;tls;audit;ports;
-StartupNotify=false
+Keywords=network;security;scanner;nmap;tls;audit;ports;
+StartupNotify=true

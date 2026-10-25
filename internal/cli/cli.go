@@ -25,7 +25,7 @@ import (
 )
 
 // Version is set at compile time via -ldflags "-X github.com/abiyeenzo/sentinel-net/internal/cli.Version=...".
-var Version = "1.0.0"
+var Version = "1.1.0"
 
 // IO encapsulates CLI streams and terminal capabilities for clean testing.
 type IO struct {
@@ -54,76 +54,83 @@ func DefaultIO() IO {
 }
 
 func helpText(bin string) string {
-	return fmt.Sprintf(`Sentinel Net v%s - Scanner d'audit reseau defensif
+	return fmt.Sprintf(`Sentinel Net v%s - Scanner d'audit reseau defensif (CLI style Nmap + Interface Graphique)
 
 USAGE:
-  %s [scan] --target <ip|cidr|plage> (--ports <spec> | --profile <nom>) --authorized [options]
+  %s [options] <cible1> [cible2 ...] -y
+  %s gui
   %s interfaces [--json]
   %s profiles [--json]
   %s diff <baseline.json> <courant.json> [--format <json|table|markdown>] [--fail-on-drift]
-  %s serve [--host 127.0.0.1] [--port 3000] [--open]
+  %s serve [--host 127.0.0.1] [--port 3000]
+
+RACCOURCIS RAPIDES (STYLE NMAP):
+  <cible>                     IP (192.168.1.1, ::1), CIDR (192.168.1.0/24) ou plage (10.0.0.1-50)
+  -y, --authorized            Confirme l'autorisation explicite d'auditer les cibles (OBLIGATOIRE)
+  -F                          Scan rapide (profil quick : 18 ports critiques)
+  -p <ports>                  Ports ou plages (ex: -p 22,80,443,8000-8050) ou -p- (ports 1-4096)
+  --top-ports <N>             Scanne les N ports les plus courants (1 a 95)
+  -P, --profile <nom>         Profil metier : quick | web | infra | database | containers | iot | top100
+  -sV, --banner               Detection passive des services et bannieres TCP
+  -sC                         Audit non-intrusif des certificats TLS X.509 et en-tetes HTTP
+  -A, -i, --inspect           Audit complet tout-en-un : banniere (-sV) + TLS + HTTP
+  -T1 .. -T5                  Cadence d'execution : -T1 prudent, -T2 poli, -T3 normal, -T4 rapide, -T5 turbo
+  -iL, --targets-file <f>     Lire la liste des cibles depuis un fichier texte
+  -R, --resolve               Activer la resolution DNS des noms d'hotes (-n pour desactiver)
+  --open                      Afficher uniquement les ports ouverts (alias --open-only)
+  --nmap                      Afficher la sortie console au format classique Nmap
+
+SORTIES ET RAPPORTS:
+  -oN <fichier>               Enregistrer le rapport texte style Nmap
+  -oJ <fichier>               Enregistrer le rapport JSON structure
+  -oS <fichier>               Enregistrer le rapport SARIF 2.1.0
+  -oM <fichier>               Enregistrer le rapport Markdown
+  -oH, --report-html <f>      Generer un rapport HTML visuel autonome
+  -oA <prefixe>               Generer d'un coup <prefixe>.txt, .json, .html et .sarif
+  -f, --format <fmt>          Format stdout : table | nmap | json | sarif | markdown | csv | html
+  -o, --output <fichier>      Ecrire la sortie principale dans un fichier
+
+SUIVI DE DERIVE (BASELINE) ET REGLES CI:
+  --save-baseline <fichier>   Enregistrer un snapshot signe SHA-256
+  --compare <fichier>         Comparer le scan courant avec une baseline existante
+  --fail-on-drift             Retourner le code 3 si l'exposition a change
+  --fail-on-severity <niv>    Retourner le code 3 si constat >= critical | high | medium | low
+
+REGLAGES MOTEUR AVANCES:
+  --timeout <100-15000>       Timeout par sonde en ms (defaut: 1000)
+  -c, --concurrency <1-128>   Sondes paralleles max (defaut: 24)
+  --retries <0-3>             Nouvelles tentatives sur timeout (defaut: 0)
+  --delay-ms <0-5000>         Pause entre sondes en ms (defaut: 0)
+  --max-hosts <1-1024>        Plafond d'hotes analyses (defaut: 256)
+  --max-ports <1-4096>        Plafond de ports par hote (defaut: 1024)
+  --no-color                  Desactiver les couleurs ANSI
+  -q, --quiet                 Masquer la progression sur stderr
+  -V, --version               Afficher la version
+  -h, --help                  Afficher cette aide
+
+EXEMPLES SIMPLES:
   %s gui
-
-COMMANDES:
-  scan          Audit d'exposition TCP/TLS/HTTP borne (commande par defaut)
-  interfaces    Liste les interfaces reseau locales et leurs adresses IPv4/IPv6
-  profiles      Liste les profils de ports integres (quick, web, infra, database, containers, iot, top100)
-  diff          Compare deux fichiers JSON de scan et affiche les derives
-  serve (ui)    Demarre la console Web locale d'audit
-  gui           Demarre la console Web locale et ouvre le navigateur par defaut
-
-OPTIONS DE CIBLAGE ET PORTS:
-  --target, -t <cibles>       IP litterale (IPv4/IPv6), CIDR (/22-/32) ou plage (ex: 192.168.1.1-50)
-  --targets-file <fichier>    Fichier texte contenant une cible par ligne (# commentaires ignores)
-  --resolve                   Autorise la resolution DNS explicite des noms d'hotes
-  --max-hosts <1-1024>        Plafond du nombre d'hotes analyses (defaut: 256)
-  --ports, -p <spec>          Ports et plages separes par virgules (ex: 22,80,443,8000-8020)
-  --profile <nom>             Profil predefini: quick | web | infra | database | containers | iot | top100
-  --max-ports <1-4096>        Plafond de ports uniques par hote (defaut: 1024)
-  --authorized                OBLIGATOIRE: confirme l'autorisation explicite d'analyser les cibles
-
-OPTIONS MOTEUR ET INSPECTION:
-  --inspect, -i               Active l'inspection complete non-intrusive (banniere + TLS + HTTP)
-  --banner                    Lecture passive de la banniere TCP initiale
-  --tls                       Audit du handshake TLS et du certificat X.509
-  --http                      Audit des en-tetes de securite HTTP/HTTPS (requete HEAD /)
-  --timeout <100-15000>       Delai d'attente par sonde en ms (defaut: 1000)
-  --concurrency, -c <1-128>   Nombre maximal de sondes simultanees (defaut: 24)
-  --retries <0-3>             Nouvelles tentatives en cas de timeout (defaut: 0)
-  --delay-ms <0-5000>         Pause en ms entre sondes pour equipements sensibles (defaut: 0)
-
-RAPPORTS, BASELINE ET REGLES CI:
-  --format, -f <fmt>          Format de sortie: table | json | sarif | markdown | csv | html
-  --json                      Alias pour --format json
-  --open-only                 Affiche uniquement les ports ouverts dans le mode table
-  --output, -o <fichier>      Ecrit le rapport principal dans un fichier
-  --report-html <fichier>     Genere en parallele un rapport HTML autonome
-  --save-baseline <fichier>   Enregistre le scan courant en baseline signee SHA-256
-  --compare <fichier>         Compare le scan courant a une baseline existante
-  --fail-on-drift             Retourne le code 3 si une derive est detectee
-  --fail-on-severity <niv>    Retourne le code 3 si constat >= critical | high | medium | low
-  --no-color                  Desactive les couleurs ANSI
-  --quiet, -q                 Masque la progression sur stderr
-  --help, -h                  Affiche cette aide
-  --version, -v               Affiche la version
-
-EXEMPLES:
-  %s --target 127.0.0.1 --profile quick --inspect --authorized
-  %s scan -t 192.168.1.0/24 -p 22,80,443,3389 --tls --http --authorized --report-html audit.html
-  %s scan -t 10.0.0.5 --profile database --authorized --format sarif -o findings.sarif
-  %s serve --port 3000
-`, Version, bin, bin, bin, bin, bin, bin, bin, bin, bin, bin)
+  %s -F 127.0.0.1 -y
+  %s -A 192.168.1.1 -y
+  %s -F -T4 192.168.1.0/24 --open -y
+  %s -sV -p 22,80,443,3306,5432 10.0.0.5 -oA audit-prod -y
+`, Version, bin, bin, bin, bin, bin, bin, bin, bin, bin, bin, bin)
 }
 
 var valueFlags = map[string]string{
 	"--target":           "target",
 	"-t":                 "target",
 	"--targets-file":     "targets-file",
+	"-iL":                "targets-file",
 	"--max-hosts":        "max-hosts",
 	"--ports":            "ports",
 	"-p":                 "ports",
+	"--top-ports":        "top-ports",
 	"--profile":          "profile",
+	"-P":                 "profile",
 	"--max-ports":        "max-ports",
+	"-T":                 "timing",
+	"--timing":           "timing",
 	"--timeout":          "timeout",
 	"--concurrency":      "concurrency",
 	"-c":                 "concurrency",
@@ -133,7 +140,13 @@ var valueFlags = map[string]string{
 	"-f":                 "format",
 	"--output":           "output",
 	"-o":                 "output",
+	"-oN":                "out-nmap",
+	"-oJ":                "out-json",
+	"-oS":                "out-sarif",
+	"-oM":                "out-md",
+	"-oH":                "report-html",
 	"--report-html":      "report-html",
+	"-oA":                "out-all",
 	"--save-baseline":    "save-baseline",
 	"--compare":          "compare",
 	"--fail-on-severity": "fail-on-severity",
@@ -143,23 +156,56 @@ var valueFlags = map[string]string{
 
 var boolFlags = map[string]string{
 	"--authorized":    "authorized",
+	"-y":              "authorized",
+	"-F":              "fast",
+	"-sT":             "tcp-connect",
+	"-Pn":             "skip-ping",
 	"--resolve":       "resolve",
+	"-R":              "resolve",
+	"-n":              "no-resolve",
 	"--inspect":       "inspect",
 	"-i":              "inspect",
+	"-A":              "inspect",
 	"--banner":        "banner",
+	"-sV":             "banner",
+	"-sC":             "scripts",
 	"--tls":           "tls",
 	"--http":          "http",
 	"--json":          "json",
+	"--nmap":          "nmap-fmt",
+	"--open":          "open",
 	"--open-only":     "open-only",
 	"--fail-on-drift": "fail-on-drift",
 	"--no-color":      "no-color",
-	"--open":          "open",
 	"--quiet":         "quiet",
 	"-q":              "quiet",
 	"--help":          "help",
 	"-h":              "help",
 	"--version":       "version",
-	"-v":              "version",
+	"-V":              "version",
+	"-v":              "v-flag",
+}
+
+type timingPreset struct {
+	concurrency int
+	timeoutMs   int
+	delayMs     int
+	retries     int
+}
+
+var timingTemplates = map[string]timingPreset{
+	"0":  {concurrency: 2, timeoutMs: 3000, delayMs: 300, retries: 1},
+	"T0": {concurrency: 2, timeoutMs: 3000, delayMs: 300, retries: 1},
+	"1":  {concurrency: 2, timeoutMs: 3000, delayMs: 250, retries: 1},
+	"T1": {concurrency: 2, timeoutMs: 3000, delayMs: 250, retries: 1},
+	"2":  {concurrency: 8, timeoutMs: 2000, delayMs: 60, retries: 1},
+	"T2": {concurrency: 8, timeoutMs: 2000, delayMs: 60, retries: 1},
+	"3":  {concurrency: 24, timeoutMs: 1000, delayMs: 0, retries: 0},
+	"T3": {concurrency: 24, timeoutMs: 1000, delayMs: 0, retries: 0},
+	"4":  {concurrency: 64, timeoutMs: 500, delayMs: 0, retries: 1},
+	"T4": {concurrency: 64, timeoutMs: 500, delayMs: 0, retries: 1},
+	"5":  {concurrency: 128, timeoutMs: 250, delayMs: 0, retries: 0},
+	"T5": {concurrency: 128, timeoutMs: 250, delayMs: 0, retries: 0},
 }
 
 func parseArgs(args []string) (map[string]string, map[string]bool, []string, error) {
@@ -169,6 +215,24 @@ func parseArgs(args []string) (map[string]string, map[string]bool, []string, err
 
 	for i := 0; i < len(args); i++ {
 		tok := args[i]
+		if tok == "--" {
+			pos = append(pos, args[i+1:]...)
+			break
+		}
+		// Compact Nmap flags: -p-, -p22,80, -T0..-T5
+		if tok == "-p-" {
+			vals["ports"] = "1-4096"
+			continue
+		}
+		if strings.HasPrefix(tok, "-p") && len(tok) > 2 && !strings.HasPrefix(tok, "--") {
+			vals["ports"] = tok[2:]
+			continue
+		}
+		if len(tok) == 3 && strings.HasPrefix(tok, "-T") && tok[2] >= '0' && tok[2] <= '5' {
+			vals["timing"] = tok[1:]
+			continue
+		}
+
 		if strings.HasPrefix(tok, "-") && tok != "-" {
 			key := tok
 			inlineVal := ""
@@ -189,7 +253,7 @@ func parseArgs(args []string) (map[string]string, map[string]bool, []string, err
 			if canonical, ok := valueFlags[key]; ok {
 				val := inlineVal
 				if !hasInline {
-					if i+1 >= len(args) || strings.HasPrefix(args[i+1], "--") {
+					if i+1 >= len(args) || (strings.HasPrefix(args[i+1], "--") && args[i+1] != "-") {
 						return nil, nil, nil, fmt.Errorf("missing value for %s", key)
 					}
 					i++
@@ -203,6 +267,16 @@ func parseArgs(args []string) (map[string]string, map[string]bool, []string, err
 		pos = append(pos, tok)
 	}
 	return vals, bools, pos, nil
+}
+
+func looksLikeTargetToken(s string) bool {
+	if s == "" {
+		return false
+	}
+	if strings.EqualFold(s, "localhost") {
+		return true
+	}
+	return strings.ContainsAny(s, ".:/")
 }
 
 func parseIntOpt(vals map[string]string, name string, def int) (int, error) {
@@ -282,7 +356,7 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 		if isStandaloneDesktopLaunch(ioCfg) {
 			argv = []string{"gui"}
 		} else {
-			return 2, fmt.Errorf("explicit target and authorization required (run %q --help for usage)", bin)
+			return 2, fmt.Errorf("explicit target and authorization required (ex: %s -F 127.0.0.1 -y, %s gui, or --help)", bin, bin)
 		}
 	}
 
@@ -295,7 +369,8 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 		_, _ = io.WriteString(ioCfg.Stdout, helpText(bin))
 		return 0, nil
 	}
-	if bools["version"] {
+	// -V / --version always prints version; -v prints version when used standalone with no target/subcommand
+	if bools["version"] || (bools["v-flag"] && len(pos) == 0 && vals["target"] == "" && vals["targets-file"] == "") {
 		_, _ = fmt.Fprintf(ioCfg.Stdout, "sentinel-net v%s (%s/%s, %s)\n", Version, runtime.GOOS, runtime.GOARCH, runtime.Version())
 		return 0, nil
 	}
@@ -304,9 +379,25 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 	defer stopSignals()
 
 	sub := "scan"
+	var posTargets []string
 	if len(pos) > 0 {
-		sub = strings.ToLower(pos[0])
+		cand := strings.ToLower(pos[0])
+		switch cand {
+		case "scan":
+			sub = "scan"
+			posTargets = pos[1:]
+		case "interfaces", "profiles", "diff", "serve", "ui", "gui":
+			sub = cand
+		default:
+			if looksLikeTargetToken(pos[0]) {
+				sub = "scan"
+				posTargets = pos
+			} else {
+				return 2, fmt.Errorf("unknown command %q (expected target IP/CIDR or command: scan, gui, interfaces, profiles, diff, serve)", pos[0])
+			}
+		}
 	}
+
 	useColor := ioCfg.StdoutTTY && !bools["no-color"] && os.Getenv("NO_COLOR") == ""
 
 	switch sub {
@@ -382,6 +473,12 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 		return 0, nil
 
 	case "serve", "ui", "gui":
+		isDesktop := sub == "gui"
+		autoOpen := isDesktop || bools["open"]
+		if isDesktop {
+			hideConsoleWindow()
+		}
+
 		host := vals["host"]
 		if host == "" {
 			host = os.Getenv("HOST")
@@ -391,6 +488,9 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 		}
 		explicitPort := false
 		portNum := 3000
+		if isDesktop && vals["port"] == "" && os.Getenv("PORT") == "" {
+			portNum = 0 // Ephemeral conflict-free port for standalone desktop GUI
+		}
 		if vals["port"] != "" {
 			p, err := strconv.Atoi(vals["port"])
 			if err != nil || p < 0 || p > 65535 {
@@ -404,15 +504,16 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 				explicitPort = true
 			}
 		}
-		autoOpen := sub == "gui" || bools["open"]
+
 		listenAddr := net.JoinHostPort(host, strconv.Itoa(portNum))
-		srv, err := web.Start(listenAddr, Version)
+		srv, err := web.StartWithOptions(listenAddr, Version, isDesktop)
 		if err != nil && autoOpen && !explicitPort {
-			srv, err = web.Start(net.JoinHostPort(host, "0"), Version)
+			srv, err = web.StartWithOptions(net.JoinHostPort(host, "0"), Version, isDesktop)
 		}
 		if err != nil {
 			return 2, err
 		}
+
 		_, actualPort, _ := net.SplitHostPort(srv.Addr())
 		browseHost := host
 		if browseHost == "" || browseHost == "0.0.0.0" || browseHost == "::" {
@@ -420,30 +521,46 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 		}
 		consoleURL := "http://" + net.JoinHostPort(browseHost, actualPort)
 		_, _ = fmt.Fprintf(ioCfg.Stdout, "Sentinel Net v%s web console listening on http://%s\n", Version, srv.Addr())
+
+		var waitWindow func()
 		if autoOpen {
-			_, _ = fmt.Fprintf(ioCfg.Stdout, "Ouverture automatique dans le navigateur : %s (Ctrl+C pour quitter)\n", consoleURL)
-			_ = openBrowser(consoleURL)
+			waitWindow, _ = launchDesktopWindow(ctx, consoleURL)
 		}
-		<-ctx.Done()
+
+		if waitWindow != nil {
+			winClosed := make(chan struct{})
+			go func() {
+				waitWindow()
+				close(winClosed)
+			}()
+			select {
+			case <-ctx.Done():
+			case <-winClosed:
+			case <-srv.Done():
+			}
+		} else {
+			select {
+			case <-ctx.Done():
+			case <-srv.Done():
+			}
+		}
+
 		shutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		_ = srv.Close(shutCtx)
 		return 0, nil
-
-	case "scan":
-		// Handled below
-	default:
-		return 2, fmt.Errorf("unknown command %q (expected: scan, interfaces, profiles, diff, serve, gui)", pos[0])
 	}
 
+	// Scan execution path
 	if !bools["authorized"] {
-		return 2, errors.New("explicit authorization required: pass --authorized only for assets you are permitted to scan")
+		return 2, errors.New("explicit authorization required: pass -y (or --authorized) only for assets you are permitted to scan")
 	}
 
 	var targetTokens []string
 	if vals["target"] != "" {
 		targetTokens = append(targetTokens, vals["target"])
 	}
+	targetTokens = append(targetTokens, posTargets...)
 	if vals["targets-file"] != "" {
 		content, err := os.ReadFile(vals["targets-file"])
 		if err != nil {
@@ -458,50 +575,96 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 		}
 	}
 	if len(targetTokens) == 0 {
-		return 2, errors.New("missing value for --target (or --targets-file)")
+		return 2, errors.New("missing target (ex: sentinel-net -F 127.0.0.1 -y)")
+	}
+
+	// Timing template defaults (-T0 .. -T5)
+	defConc := 24
+	defTimeout := 1000
+	defDelay := 0
+	defRetries := 0
+	if rawT := strings.ToUpper(strings.TrimSpace(vals["timing"])); rawT != "" {
+		preset, ok := timingTemplates[rawT]
+		if !ok {
+			return 2, fmt.Errorf("invalid timing template %q (expected -T0 to -T5)", vals["timing"])
+		}
+		defConc = preset.concurrency
+		defTimeout = preset.timeoutMs
+		defDelay = preset.delayMs
+		defRetries = preset.retries
 	}
 
 	maxHosts, err := parseIntOpt(vals, "max-hosts", netscope.DefaultMaxHosts)
 	if err != nil {
 		return 2, err
 	}
-	maxPorts, err := parseIntOpt(vals, "max-ports", netscope.DefaultMaxPorts)
+	defMaxPorts := netscope.DefaultMaxPorts
+	if vals["ports"] == "1-4096" || vals["ports"] == "-" {
+		vals["ports"] = "1-4096"
+		defMaxPorts = netscope.HardMaxPorts
+	}
+	maxPorts, err := parseIntOpt(vals, "max-ports", defMaxPorts)
 	if err != nil {
 		return 2, err
 	}
-	timeoutMs, err := parseIntOpt(vals, "timeout", 1000)
+	timeoutMs, err := parseIntOpt(vals, "timeout", defTimeout)
 	if err != nil {
 		return 2, err
 	}
-	concurrency, err := parseIntOpt(vals, "concurrency", 24)
+	concurrency, err := parseIntOpt(vals, "concurrency", defConc)
 	if err != nil {
 		return 2, err
 	}
-	retries, err := parseIntOpt(vals, "retries", 0)
+	retries, err := parseIntOpt(vals, "retries", defRetries)
 	if err != nil {
 		return 2, err
 	}
-	delayMs, err := parseIntOpt(vals, "delay-ms", 0)
+	delayMs, err := parseIntOpt(vals, "delay-ms", defDelay)
 	if err != nil {
 		return 2, err
 	}
 
+	enableDNS := bools["resolve"] && !bools["no-resolve"]
 	resolvedTargets, err := netscope.ResolveTargets(ctx, strings.Join(targetTokens, ","), netscope.ResolveOptions{
-		ResolveDNS: bools["resolve"],
+		ResolveDNS: enableDNS,
 		MaxHosts:   maxHosts,
 	})
 	if err != nil {
 		return 2, err
 	}
 
-	selectedPorts, err := netscope.ResolvePortSelection(vals["ports"], vals["profile"], maxPorts)
+	profileName := vals["profile"]
+	portsSpec := vals["ports"]
+	if vals["top-ports"] != "" {
+		topN, err := strconv.Atoi(vals["top-ports"])
+		pTop, _ := profiles.Get("top100")
+		if err != nil || topN < 1 || topN > len(pTop.Ports) {
+			return 2, fmt.Errorf("--top-ports expects an integer between 1 and %d", len(pTop.Ports))
+		}
+		strs := make([]string, topN)
+		for idx := 0; idx < topN; idx++ {
+			strs[idx] = strconv.Itoa(pTop.Ports[idx])
+		}
+		portsSpec = strings.Join(strs, ",")
+	} else if portsSpec == "" && profileName == "" {
+		if bools["fast"] {
+			profileName = "quick"
+		} else {
+			profileName = "top100"
+		}
+	}
+
+	selectedPorts, err := netscope.ResolvePortSelection(portsSpec, profileName, maxPorts)
 	if err != nil {
 		return 2, err
 	}
 
-	showProgress := ioCfg.StderrTTY && !bools["quiet"]
+	enableTLS := bools["tls"] || bools["scripts"]
+	enableHTTP := bools["http"] || bools["scripts"]
+
+	showProgress := (ioCfg.StderrTTY || bools["v-flag"]) && !bools["quiet"]
 	var progressCb func(scanner.ProgressEvent)
-	if showProgress {
+	if showProgress && ioCfg.StderrTTY {
 		progressCb = func(ev scanner.ProgressEvent) {
 			_, _ = fmt.Fprintf(ioCfg.Stderr, "\r[sentinel-net] %d/%d (%.1f%%) - %s:%d   ",
 				ev.GlobalCompleted, ev.GlobalTotal, ev.Percent, ev.Target, ev.Port)
@@ -511,7 +674,7 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 	rep, err := scanner.ScanNetwork(ctx, scanner.NetworkOptions{
 		Targets:     resolvedTargets,
 		Ports:       selectedPorts,
-		Profile:     vals["profile"],
+		Profile:     profileName,
 		Version:     Version,
 		Timeout:     time.Duration(timeoutMs) * time.Millisecond,
 		Concurrency: concurrency,
@@ -519,11 +682,11 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 		Delay:       time.Duration(delayMs) * time.Millisecond,
 		Inspect:     bools["inspect"],
 		Banner:      bools["banner"],
-		TLS:         bools["tls"],
-		HTTP:        bools["http"],
+		TLS:         enableTLS,
+		HTTP:        enableHTTP,
 		OnProgress:  progressCb,
 	})
-	if showProgress {
+	if showProgress && ioCfg.StderrTTY {
 		_, _ = fmt.Fprintf(ioCfg.Stderr, "\r%s\r", strings.Repeat(" ", 78))
 	}
 	if err != nil {
@@ -544,6 +707,61 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 		}
 	}
 
+	openOnly := bools["open-only"] || bools["open"]
+
+	// Nmap multi-output flags (-oN, -oJ, -oS, -oM, -oH, -oA)
+	if prefix := vals["out-all"]; prefix != "" {
+		nmapOut := report.FormatNmap(rep, openOnly)
+		if err := os.WriteFile(prefix+".txt", []byte(nmapOut), 0o644); err != nil {
+			return 2, err
+		}
+		jsonOut, err := report.FormatJSON(rep)
+		if err != nil {
+			return 2, err
+		}
+		if err := os.WriteFile(prefix+".json", []byte(jsonOut), 0o644); err != nil {
+			return 2, err
+		}
+		htmlOut := report.FormatHTML(rep)
+		if err := os.WriteFile(prefix+".html", []byte(htmlOut), 0o644); err != nil {
+			return 2, err
+		}
+		sarifOut, err := report.FormatSARIF(rep)
+		if err != nil {
+			return 2, err
+		}
+		if err := os.WriteFile(prefix+".sarif", []byte(sarifOut), 0o644); err != nil {
+			return 2, err
+		}
+	}
+	if vals["out-nmap"] != "" {
+		if err := os.WriteFile(vals["out-nmap"], []byte(report.FormatNmap(rep, openOnly)), 0o644); err != nil {
+			return 2, err
+		}
+	}
+	if vals["out-json"] != "" {
+		j, err := report.FormatJSON(rep)
+		if err != nil {
+			return 2, err
+		}
+		if err := os.WriteFile(vals["out-json"], []byte(j), 0o644); err != nil {
+			return 2, err
+		}
+	}
+	if vals["out-sarif"] != "" {
+		s, err := report.FormatSARIF(rep)
+		if err != nil {
+			return 2, err
+		}
+		if err := os.WriteFile(vals["out-sarif"], []byte(s), 0o644); err != nil {
+			return 2, err
+		}
+	}
+	if vals["out-md"] != "" {
+		if err := os.WriteFile(vals["out-md"], []byte(report.FormatMarkdown(rep)), 0o644); err != nil {
+			return 2, err
+		}
+	}
 	if vals["report-html"] != "" {
 		htmlOut := report.FormatHTML(rep)
 		if err := os.WriteFile(vals["report-html"], []byte(htmlOut), 0o644); err != nil {
@@ -554,6 +772,8 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 	fmtName := vals["format"]
 	if bools["json"] {
 		fmtName = "json"
+	} else if bools["nmap-fmt"] {
+		fmtName = "nmap"
 	} else if fmtName == "" {
 		if ioCfg.StdoutTTY {
 			fmtName = "table"
@@ -565,7 +785,7 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 	rendered, err := report.Format(rep, report.Options{
 		Format:   fmtName,
 		Color:    useColor,
-		OpenOnly: bools["open-only"],
+		OpenOnly: openOnly,
 	})
 	if err != nil {
 		return 2, err

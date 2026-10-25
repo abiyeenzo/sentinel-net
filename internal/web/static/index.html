@@ -4,579 +4,1511 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" type="image/svg+xml" href="/logo.svg" />
-<title>Sentinel Net - Console d'Audit Reseau</title>
+<title>Sentinel Net</title>
 <style>
   :root {
-    --bg: #080d18;
-    --panel: #101827;
-    --panel-alt: #0b1220;
-    --border: #1f2d46;
-    --text: #e5e7eb;
-    --muted: #8b9bb4;
-    --accent: #38bdf8;
+    --bg: #090d16;
+    --bg-elev: #0f1624;
+    --bg-panel: #131c2e;
+    --bg-input: #0b111d;
+    --border: #22304a;
+    --border-hi: #344b73;
+    --text: #e6edf7;
+    --muted: #8b9bb5;
+    --accent: #22d3ee;
+    --accent-strong: #0284c7;
     --green: #10b981;
     --amber: #f59e0b;
     --orange: #f97316;
     --red: #ef4444;
   }
   * { box-sizing: border-box; }
-  body {
+  html, body {
+    height: 100%;
     margin: 0;
     background: var(--bg);
     color: var(--text);
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    line-height: 1.5;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.45;
+    overflow: hidden;
   }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-  header.topbar {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0.85rem 1.5rem; background: var(--panel); border-bottom: 1px solid var(--border);
-    flex-wrap: wrap; gap: 0.75rem;
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+
+  .app-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
   }
-  .brand { font-weight: 700; font-size: 1.05rem; letter-spacing: 0.02em; }
-  .brand span { color: var(--accent); }
-  .subtitle { font-size: 0.78rem; color: var(--muted); }
-  .status-tag {
-    font-size: 0.76rem; padding: 0.25rem 0.65rem; border-radius: 6px;
-    background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.35); color: #34d399;
+
+  /* Top title & action bar */
+  .titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1rem;
+    background: var(--bg-elev);
+    border-bottom: 1px solid var(--border);
+    gap: 0.75rem;
+    flex-wrap: wrap;
   }
-  .layout {
-    max-width: 1400px; margin: 0 auto; padding: 1.25rem 1.5rem;
-    display: grid; grid-template-columns: 360px 1fr; gap: 1.25rem; align-items: start;
+  .brand-row {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
   }
-  @media (max-width: 1020px) { .layout { grid-template-columns: 1fr; } }
-  .panel {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1.15rem;
+  .brand-row img {
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
   }
-  .section-head {
-    font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
-    color: var(--accent); margin: 0 0 0.85rem;
+  .brand-title {
+    font-weight: 700;
+    font-size: 0.98rem;
+    letter-spacing: 0.03em;
   }
-  label.lbl { display: block; font-size: 0.78rem; font-weight: 600; color: var(--muted); margin: 0.75rem 0 0.3rem; }
-  input[type="text"], input[type="number"], input[type="search"], select {
-    width: 100%; background: var(--panel-alt); color: var(--text);
-    border: 1px solid var(--border); border-radius: 6px; padding: 0.52rem 0.7rem; font-size: 0.86rem; outline: none;
+  .brand-title span { color: var(--accent); }
+  .ver-badge {
+    font-size: 0.72rem;
+    color: var(--muted);
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
   }
-  input:focus, select:focus { border-color: var(--accent); }
-  .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
-  .chip {
-    background: var(--panel-alt); border: 1px solid var(--border); color: var(--muted);
-    padding: 0.24rem 0.55rem; border-radius: 5px; font-size: 0.74rem; cursor: pointer;
+  .toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
   }
-  .chip:hover, .chip.active { border-color: var(--accent); color: var(--accent); }
-  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; }
-  .checks { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; }
-  .chk { display: flex; gap: 0.5rem; align-items: flex-start; font-size: 0.82rem; cursor: pointer; padding: 0.3rem 0; }
-  .auth-note {
-    margin-top: 0.9rem; padding: 0.68rem; border-radius: 7px;
-    background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.35);
-    font-size: 0.79rem; color: #fde68a;
+
+  /* Zenmap command bar */
+  .cmddeck {
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    padding: 0.65rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
   }
-  .actions { display: flex; gap: 0.5rem; margin-top: 0.95rem; }
+  .cmd-row-main {
+    display: grid;
+    grid-template-columns: minmax(200px, 1.5fr) minmax(200px, 1.2fr) minmax(135px, 0.8fr) auto;
+    gap: 0.55rem;
+    align-items: end;
+  }
+  @media (max-width: 960px) {
+    .cmd-row-main { grid-template-columns: 1fr 1fr; }
+  }
+  .field-grp label {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin-bottom: 0.22rem;
+  }
+  input[type="text"], input[type="search"], select {
+    width: 100%;
+    background: var(--bg-input);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 0.44rem 0.6rem;
+    font-size: 0.84rem;
+    outline: none;
+  }
+  input:focus, select:focus {
+    border-color: var(--accent);
+  }
+  .cmd-line-wrap {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .cmd-lbl {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+  }
+  .opts-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding-top: 0.1rem;
+  }
+  .opts-checks {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+  }
+  .chk-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.79rem;
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+  }
+  .auth-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.24rem 0.6rem;
+    border-radius: 5px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: #fde68a;
+    font-size: 0.78rem;
+    cursor: pointer;
+    user-select: none;
+  }
+  .auth-pill.checked {
+    background: rgba(16, 185, 129, 0.12);
+    border-color: rgba(16, 185, 129, 0.45);
+    color: #6ee7b7;
+  }
+
   button.btn {
-    border: 1px solid transparent; border-radius: 7px; padding: 0.6rem 0.95rem;
-    font-weight: 600; font-size: 0.85rem; cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--bg-input);
+    color: var(--text);
+    border-radius: 5px;
+    padding: 0.44rem 0.8rem;
+    font-size: 0.81rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
   }
-  .btn-run { flex: 1; background: var(--accent); color: #061325; }
-  .btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
-  .btn-stop { background: rgba(239,68,68,0.16); color: #f87171; border-color: rgba(239,68,68,0.4); }
-  .btn-sm {
-    background: var(--panel-alt); color: var(--text); border-color: var(--border);
-    padding: 0.4rem 0.68rem; font-size: 0.76rem;
+  button.btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
   }
-  .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
-  .prog { margin-top: 0.85rem; display: none; }
-  .prog.visible { display: block; }
-  .prog-bar { height: 7px; background: var(--panel-alt); border: 1px solid var(--border); border-radius: 99px; overflow: hidden; }
-  .prog-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.12s; }
-  .prog-meta { display: flex; justify-content: space-between; font-size: 0.74rem; color: var(--muted); margin-top: 0.3rem; }
-  .err-box {
-    display: none; margin-bottom: 1rem; padding: 0.75rem 0.95rem; border-radius: 8px;
-    background: rgba(239,68,68,0.14); border: 1px solid rgba(239,68,68,0.45); color: #fca5a5; font-size: 0.84rem;
+  button.btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
-  .err-box.visible { display: block; }
-  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.85rem; margin-bottom: 1rem; }
-  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 9px; padding: 0.9rem 1rem; }
-  .kpi-lbl { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
-  .kpi-val { font-size: 1.65rem; font-weight: 700; margin-top: 0.15rem; }
-  .kpi-sub { font-size: 0.75rem; color: var(--muted); margin-top: 0.1rem; }
-  .bar-top { display: flex; justify-content: space-between; align-items: center; gap: 0.65rem; flex-wrap: wrap; margin-bottom: 0.85rem; }
-  .tabs, .exports { display: flex; gap: 0.35rem; flex-wrap: wrap; }
-  .tab {
-    background: var(--panel); color: var(--muted); border: 1px solid var(--border);
-    padding: 0.45rem 0.85rem; border-radius: 7px; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+  button.btn-primary {
+    background: linear-gradient(135deg, #06b6d4, #0284c7);
+    border-color: #0ea5e9;
+    color: #04101d;
+    font-weight: 700;
+    padding: 0.45rem 1.05rem;
   }
-  .tab.active { color: var(--accent); border-color: var(--accent); background: rgba(56,189,248,0.1); }
-  .filters { display: flex; gap: 0.6rem; margin-bottom: 0.8rem; flex-wrap: wrap; }
-  .filters input { max-width: 280px; }
-  .filters select { max-width: 200px; }
-  table.tbl { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
-  .tbl th, .tbl td { padding: 0.6rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
-  .tbl th { font-size: 0.72rem; text-transform: uppercase; color: var(--muted); }
-  .badge { display: inline-block; padding: 0.12rem 0.48rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700; }
-  .b-open { background: rgba(16,185,129,0.18); color: #34d399; }
-  .b-closed { background: rgba(245,158,11,0.14); color: #fbbf24; }
-  .b-unknown { background: rgba(148,163,184,0.12); color: #94a3b8; }
-  .finding {
-    background: var(--panel-alt); border: 1px solid var(--border); border-left-width: 4px;
-    border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 0.65rem;
+  button.btn-primary:hover:not(:disabled) {
+    filter: brightness(1.08);
+    color: #04101d;
+  }
+  button.btn-danger {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #fca5a5;
+  }
+  button.btn-xs {
+    padding: 0.25rem 0.55rem;
+    font-size: 0.74rem;
+  }
+
+  /* Main split workspace */
+  .workspace {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 275px 1fr;
+    min-height: 0;
+  }
+  @media (max-width: 860px) {
+    html, body { overflow: auto; }
+    .app-shell { height: auto; min-height: 100vh; }
+    .workspace { grid-template-columns: 1fr; }
+  }
+
+  /* Left Zenmap sidebar */
+  .sidebar {
+    background: var(--bg-elev);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .side-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    border-bottom: 1px solid var(--border);
+  }
+  .side-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    padding: 0.52rem 0.3rem;
+    font-size: 0.76rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+  .side-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: rgba(34, 211, 238, 0.05);
+  }
+  .side-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
+  }
+  .side-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.45rem 0.55rem;
+    border-radius: 5px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    margin-bottom: 0.25rem;
+    gap: 0.4rem;
+  }
+  .side-item:hover {
+    background: var(--bg-panel);
+    border-color: var(--border);
+  }
+  .side-item.active {
+    background: rgba(34, 211, 238, 0.1);
+    border-color: rgba(34, 211, 238, 0.4);
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .dot-open { background: var(--green); box-shadow: 0 0 6px rgba(16,185,129,0.6); }
+  .dot-idle { background: #475569; }
+  .grade-mini {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.08rem 0.36rem;
+    border-radius: 4px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+  }
+  .side-history {
+    border-top: 1px solid var(--border);
+    padding: 0.5rem 0.6rem;
+    max-height: 155px;
+    overflow-y: auto;
+  }
+  .side-sec-title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin-bottom: 0.35rem;
+  }
+
+  /* Main content panel */
+  .main-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--bg);
+  }
+  .view-tabs {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.4rem 0.85rem 0;
+    background: var(--bg-elev);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .vtab {
+    background: transparent;
+    border: 1px solid transparent;
+    border-bottom: none;
+    color: var(--muted);
+    padding: 0.48rem 0.85rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+  }
+  .vtab.active {
+    background: var(--bg);
+    color: var(--accent);
+    border-color: var(--border);
+  }
+  .alert-banner {
+    display: none;
+    margin: 0.65rem 0.9rem 0;
+    padding: 0.55rem 0.8rem;
+    border-radius: 5px;
+    background: rgba(239, 68, 68, 0.14);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    color: #fca5a5;
+    font-size: 0.81rem;
+  }
+  .alert-banner.visible { display: block; }
+
+  .tab-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.85rem 1rem;
+    display: none;
+    min-height: 0;
+  }
+  .tab-body.active { display: block; }
+
+  /* Nmap console output */
+  .console-box {
+    background: #060911;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.9rem 1rem;
+    min-height: 100%;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12.8px;
+    line-height: 1.55;
+    color: #d1fae5;
+  }
+  .c-hdr { color: #38bdf8; font-weight: 700; }
+  .c-open { color: #34d399; font-weight: 700; }
+  .c-closed { color: #94a3b8; }
+  .c-unk { color: #fbbf24; }
+  .c-sub { color: #7dd3fc; }
+  .c-crit { color: #f87171; font-weight: 700; }
+  .c-warn { color: #fb923c; font-weight: 700; }
+
+  /* Table */
+  .filter-bar {
+    display: flex;
+    gap: 0.55rem;
+    margin-bottom: 0.7rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  table.grid-tbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.81rem;
+  }
+  .grid-tbl th, .grid-tbl td {
+    padding: 0.5rem 0.65rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .grid-tbl th {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    background: var(--bg-elev);
+    position: sticky;
+    top: 0;
+  }
+  .grid-tbl tr:hover td {
+    background: rgba(34, 211, 238, 0.04);
+  }
+  .st-badge {
+    display: inline-block;
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.69rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .st-open { background: rgba(16, 185, 129, 0.18); color: #34d399; }
+  .st-closed { background: rgba(148, 163, 184, 0.14); color: #94a3b8; }
+  .st-unknown { background: rgba(245, 158, 11, 0.16); color: #fbbf24; }
+
+  /* KPI & Findings */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+    gap: 0.7rem;
+    margin-bottom: 0.9rem;
+  }
+  .kpi-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.75rem 0.9rem;
+  }
+  .kpi-lbl { font-size: 0.69rem; text-transform: uppercase; color: var(--muted); }
+  .kpi-val { font-size: 1.45rem; font-weight: 700; margin-top: 0.1rem; }
+  .kpi-sub { font-size: 0.73rem; color: var(--muted); }
+
+  .finding-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-left-width: 4px;
+    border-radius: 6px;
+    padding: 0.75rem 0.9rem;
+    margin-bottom: 0.55rem;
   }
   .sev-critical { border-left-color: var(--red); }
   .sev-high { border-left-color: var(--orange); }
   .sev-medium { border-left-color: var(--amber); }
   .sev-low { border-left-color: var(--accent); }
-  .pill { font-size: 0.68rem; font-weight: 700; padding: 0.12rem 0.42rem; border-radius: 4px; text-transform: uppercase; }
-  .p-critical { background: var(--red); color: #fff; }
-  .p-high { background: var(--orange); color: #fff; }
-  .p-medium { background: var(--amber); color: #0f172a; }
-  .p-low { background: var(--accent); color: #082f49; }
-  .empty { text-align: center; padding: 2.5rem 1rem; color: var(--muted); font-size: 0.88rem; }
-  .pane { display: none; }
-  .pane.active { display: block; }
+  .sev-pill {
+    font-size: 0.67rem;
+    font-weight: 700;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    text-transform: uppercase;
+  }
+  .sp-critical { background: var(--red); color: #fff; }
+  .sp-high { background: var(--orange); color: #fff; }
+  .sp-medium { background: var(--amber); color: #0b111d; }
+  .sp-low { background: var(--accent); color: #062130; }
+
+  /* Topology canvas */
+  .topo-wrap {
+    background: #060a12;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    height: calc(100% - 8px);
+    min-height: 420px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* CLI Guide cards */
+  .cmd-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.7rem 0.85rem;
+    margin-bottom: 0.55rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .cmd-code {
+    background: #060911;
+    border: 1px solid var(--border);
+    padding: 0.3rem 0.55rem;
+    border-radius: 4px;
+    color: var(--accent);
+    font-size: 0.8rem;
+  }
+
+  /* Bottom status bar */
+  .statusbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.85rem;
+    padding: 0.35rem 1rem;
+    background: var(--bg-elev);
+    border-top: 1px solid var(--border);
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .prog-track {
+    width: 200px;
+    height: 6px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .prog-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 0.12s;
+  }
+  .empty-hint {
+    text-align: center;
+    padding: 2.5rem 1rem;
+    color: var(--muted);
+  }
 </style>
 </head>
 <body>
-<header class="topbar">
-  <div style="display:flex;align-items:center;gap:0.75rem;">
-    <img src="/logo.svg" alt="Sentinel Net" width="38" height="38" style="border-radius:8px;flex-shrink:0;" />
-    <div>
-      <div class="brand">SENTINEL <span>NET</span> <small class="mono" id="verTag"></small></div>
-      <div class="subtitle">Audit defensif d'exposition TCP / TLS / HTTP et suivi de baseline</div>
+<div class="app-shell">
+  <header class="titlebar">
+    <div class="brand-row">
+      <img src="/logo.svg" alt="Sentinel Net" />
+      <div class="brand-title">SENTINEL <span>NET</span></div>
+      <span class="ver-badge mono" id="verTag">v1.0.0</span>
     </div>
-  </div>
-  <div class="status-tag mono">Moteur Go natif actif</div>
-</header>
+    <div class="toolbar-right">
+      <input type="file" id="baselineFile" accept=".json" style="display:none" />
+      <button class="btn btn-xs" id="btnLoadBase" title="Comparer le prochain scan avec un snapshot JSON">Comparer Baseline...</button>
+      <span id="baseBadge" class="mono" style="font-size:0.72rem;color:var(--accent);"></span>
+      <button class="btn btn-xs" data-exp="nmap" disabled>Export Nmap (.txt)</button>
+      <button class="btn btn-xs" data-exp="html" disabled>Rapport HTML</button>
+      <button class="btn btn-xs" data-exp="json" disabled>JSON</button>
+      <button class="btn btn-xs" data-exp="sarif" disabled>SARIF</button>
+      <button class="btn btn-xs" data-exp="csv" disabled>CSV</button>
+    </div>
+  </header>
 
-<main class="layout">
-  <aside class="panel">
-    <div class="section-head">Configuration du scan</div>
-
-    <label class="lbl">Cible(s) IP, CIDR (/22-/32) ou plage</label>
-    <input type="text" id="targetInput" class="mono" value="127.0.0.1" placeholder="127.0.0.1, 192.168.1.0/24, 10.0.0.1-20" />
-    <div class="chips" id="nicChips"></div>
-
-    <label class="lbl">Profil de ports</label>
-    <div class="chips" id="profileChips"></div>
-
-    <label class="lbl">Ports additionnels ou personnalises</label>
-    <input type="text" id="portsInput" class="mono" placeholder="22,80,443,8000-8020" />
-
-    <div class="row-2">
-      <div>
-        <label class="lbl">Timeout (ms)</label>
-        <input type="number" id="timeoutInput" min="100" max="15000" value="800" />
+  <section class="cmddeck">
+    <div class="cmd-row-main">
+      <div class="field-grp">
+        <label for="targetInput">Cible(s) (IP, CIDR /22-/32, plage ou nom DNS)</label>
+        <input type="text" id="targetInput" class="mono" value="127.0.0.1" placeholder="127.0.0.1, 192.168.1.0/24, 10.0.0.1-30" />
       </div>
-      <div>
-        <label class="lbl">Concurrence</label>
-        <input type="number" id="concurrencyInput" min="1" max="128" value="24" />
+      <div class="field-grp">
+        <label for="presetSelect">Profil de scan (style Zenmap)</label>
+        <select id="presetSelect">
+          <option value="fast">Scan rapide (-F)</option>
+          <option value="intense" selected>Audit complet (-A : Banniere + TLS + HTTP)</option>
+          <option value="standard">Scan standard (Top 100 ports)</option>
+          <option value="version">Detection de services (-sV)</option>
+          <option value="web">Audit Serveurs Web &amp; TLS (-P web -sC)</option>
+          <option value="database">Audit Bases de donnees (-P database -sV)</option>
+          <option value="infra">Audit Infrastructure &amp; Admin (-P infra -A)</option>
+          <option value="containers">Audit Conteneurs &amp; K8s (-P containers -A)</option>
+          <option value="iot">Audit IoT prudent (-P iot -T2 -sV)</option>
+          <option value="full1024">Ports systeme 1-1024 (-p 1-1024)</option>
+          <option value="custom">Ports personnalises (-p ...)</option>
+        </select>
+      </div>
+      <div class="field-grp">
+        <label for="timingSelect">Cadence (-T)</label>
+        <select id="timingSelect">
+          <option value="T1">-T1 Prudent (lent)</option>
+          <option value="T2">-T2 Poli (IoT)</option>
+          <option value="T3" selected>-T3 Normal</option>
+          <option value="T4">-T4 Rapide (LAN)</option>
+          <option value="T5">-T5 Turbo (local)</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:0.4rem;">
+        <button class="btn btn-primary" id="btnScan">Scanner</button>
+        <button class="btn btn-danger" id="btnStop" disabled>Arreter</button>
       </div>
     </div>
 
-    <label class="lbl">Options d'inspection</label>
-    <div class="checks">
-      <label class="chk"><input type="checkbox" id="chkBanner" checked /> <span>Lecture passive des bannieres TCP</span></label>
-      <label class="chk"><input type="checkbox" id="chkTls" checked /> <span>Audit certificats X.509 et version TLS</span></label>
-      <label class="chk"><input type="checkbox" id="chkHttp" checked /> <span>Audit en-tetes de securite HTTP (HEAD)</span></label>
-      <label class="chk"><input type="checkbox" id="chkResolve" /> <span>Autoriser la resolution DNS</span></label>
+    <div class="cmd-line-wrap">
+      <span class="cmd-lbl mono">Commande</span>
+      <input type="text" id="cmdPreview" class="mono" spellcheck="false" />
+      <button class="btn btn-xs" id="btnCopyCmd">Copier</button>
     </div>
 
-    <div class="auth-note">
-      <label style="display:flex;gap:0.5rem;align-items:flex-start;cursor:pointer">
-        <input type="checkbox" id="chkAuthorized" style="margin-top:0.18rem" />
-        <span><strong>Autorisation :</strong> je confirme etre autorise a analyser les cibles indiquees.</span>
+    <div class="opts-strip">
+      <div class="opts-checks">
+        <label class="chk-inline"><input type="checkbox" id="chkBanner" checked /> Banniere (-sV)</label>
+        <label class="chk-inline"><input type="checkbox" id="chkTLS" checked /> Certificats TLS</label>
+        <label class="chk-inline"><input type="checkbox" id="chkHTTP" checked /> En-tetes HTTP</label>
+        <label class="chk-inline"><input type="checkbox" id="chkDNS" /> Resolution DNS (-R)</label>
+        <span style="display:inline-flex;align-items:center;gap:0.35rem;">
+          <span style="font-size:0.75rem;color:var(--muted);">Ports (-p):</span>
+          <input type="text" id="portsInput" class="mono" placeholder="ex: 22,80,443,8000-8050" style="width:175px;padding:0.25rem 0.45rem;font-size:0.78rem;" />
+        </span>
+      </div>
+      <label class="auth-pill" id="authPill">
+        <input type="checkbox" id="chkAuth" />
+        <span>J'ai l'autorisation d'analyser ces cibles (-y)</span>
       </label>
     </div>
-
-    <div class="actions">
-      <button class="btn btn-run" id="runBtn">Lancer le scan</button>
-      <button class="btn btn-stop" id="stopBtn" style="display:none">Annuler</button>
-    </div>
-
-    <div class="prog" id="progBox">
-      <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
-      <div class="prog-meta mono"><span id="progLabel">Preparation...</span><span id="progPct">0%</span></div>
-    </div>
-  </aside>
-
-  <section>
-    <div class="err-box" id="errBox"></div>
-
-    <div class="kpis">
-      <div class="kpi">
-        <div class="kpi-lbl">Score de posture</div>
-        <div class="kpi-val" id="kpiGrade" style="color:var(--muted)">n/a</div>
-        <div class="kpi-sub" id="kpiLevel">En attente</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-lbl">Ports ouverts</div>
-        <div class="kpi-val" id="kpiOpen" style="color:var(--green)">0</div>
-        <div class="kpi-sub" id="kpiProbes">0 sonde</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-lbl">Constats</div>
-        <div class="kpi-val" id="kpiFindings" style="color:var(--amber)">0</div>
-        <div class="kpi-sub" id="kpiBreakdown">Crit: 0 | Eleve: 0 | Moyen: 0</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-lbl">Latence RTT moy</div>
-        <div class="kpi-val" id="kpiRtt">n/a</div>
-        <div class="kpi-sub" id="kpiDur">Duree : n/a</div>
-      </div>
-    </div>
-
-    <div class="bar-top">
-      <div class="tabs">
-        <button class="tab active" data-tab="ports">Observations TCP</button>
-        <button class="tab" data-tab="findings">Constats & remediations</button>
-        <button class="tab" data-tab="drift">Baseline & derive</button>
-      </div>
-      <div class="exports" id="exportBar" style="display:none">
-        <button class="btn btn-sm" id="setBaselineBtn">Figer en baseline</button>
-        <button class="btn btn-sm" data-fmt="html">HTML</button>
-        <button class="btn btn-sm" data-fmt="sarif">SARIF</button>
-        <button class="btn btn-sm" data-fmt="json">JSON</button>
-        <button class="btn btn-sm" data-fmt="markdown">Markdown</button>
-        <button class="btn btn-sm" data-fmt="csv">CSV</button>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="pane active" id="pane-ports">
-        <div class="filters">
-          <input type="search" id="searchBox" placeholder="Filtrer IP, port, service..." />
-          <select id="stateSelect">
-            <option value="all">Tous les etats</option>
-            <option value="open">OPEN</option>
-            <option value="closed">CLOSED</option>
-            <option value="unknown">UNKNOWN</option>
-          </select>
-        </div>
-        <div id="portsWrap">
-          <div class="empty">Configurez une cible, cochez l'autorisation et lancez le scan.</div>
-        </div>
-      </div>
-
-      <div class="pane" id="pane-findings">
-        <div id="findingsWrap">
-          <div class="empty">Aucun scan execute dans cette session.</div>
-        </div>
-      </div>
-
-      <div class="pane" id="pane-drift">
-        <div id="driftWrap">
-          <div class="empty">Figez un resultat comme baseline pour comparer les prochains scans.</div>
-        </div>
-      </div>
-    </div>
   </section>
-</main>
+
+  <div class="workspace">
+    <aside class="sidebar">
+      <div class="side-tabs">
+        <button class="side-tab active" data-stab="hosts">Hotes</button>
+        <button class="side-tab" data-stab="services">Services</button>
+        <button class="side-tab" data-stab="nics">Interfaces</button>
+      </div>
+      <div class="side-list" id="sideContent">
+        <div class="empty-hint" style="padding:1.5rem 0.5rem;font-size:0.78rem;">Aucun scan execute.<br/>Selectionnez une interface locale ou lancez un scan.</div>
+      </div>
+      <div class="side-history">
+        <div class="side-sec-title">Historique de la session</div>
+        <div id="historyList" style="font-size:0.75rem;color:var(--muted);">Aucun scan enregistre.</div>
+      </div>
+    </aside>
+
+    <main class="main-pane">
+      <div class="view-tabs">
+        <button class="vtab active" data-vtab="nmap">Sortie Nmap</button>
+        <button class="vtab" data-vtab="ports">Ports / Hotes</button>
+        <button class="vtab" data-vtab="topology">Topologie</button>
+        <button class="vtab" data-vtab="risks">Risques &amp; Details</button>
+        <button class="vtab" data-vtab="help">Guide CLI (style Nmap)</button>
+      </div>
+
+      <div id="errBanner" class="alert-banner"></div>
+
+      <div id="tab-nmap" class="tab-body active">
+        <div id="nmapConsole" class="console-box mono"># Pret. Cochez l'autorisation (-y) puis cliquez sur Scanner ou appuyez sur Entree.
+# Exemple equivalent en terminal :
+#   sentinel-net -A 127.0.0.1 -y</div>
+      </div>
+
+      <div id="tab-ports" class="tab-body">
+        <div class="filter-bar">
+          <input type="search" id="portSearch" placeholder="Filtrer par IP, port, service, banniere..." style="max-width:280px;" />
+          <select id="stateFilter" style="max-width:190px;">
+            <option value="all">Tous les etats</option>
+            <option value="open">Ouverts uniquement (open)</option>
+            <option value="closed">Fermes (closed)</option>
+            <option value="unknown">Filtres / Inconnus (unknown)</option>
+          </select>
+          <button class="btn btn-xs" id="btnResetHostFilter" style="display:none;">Afficher tous les hotes</button>
+        </div>
+        <div id="portsContainer">
+          <div class="empty-hint">Lancez un scan pour inspecter la table des ports et services.</div>
+        </div>
+      </div>
+
+      <div id="tab-topology" class="tab-body">
+        <div class="topo-wrap" id="topoCanvas">
+          <div class="empty-hint">La carte radiale des hotes et ports ouverts s'affichera ici apres un scan.</div>
+        </div>
+      </div>
+
+      <div id="tab-risks" class="tab-body">
+        <div class="kpi-row">
+          <div class="kpi-card">
+            <div class="kpi-lbl">Posture globale</div>
+            <div class="kpi-val mono" id="kpiScore">--</div>
+            <div class="kpi-sub" id="kpiGrade">En attente</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-lbl">Ports ouverts</div>
+            <div class="kpi-val mono" id="kpiOpen">--</div>
+            <div class="kpi-sub" id="kpiHosts">--</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-lbl">Constats de securite</div>
+            <div class="kpi-val mono" id="kpiFindings">--</div>
+            <div class="kpi-sub" id="kpiSev">--</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-lbl">Latence RTT</div>
+            <div class="kpi-val mono" id="kpiRtt">--</div>
+            <div class="kpi-sub" id="kpiDur">--</div>
+          </div>
+        </div>
+        <div id="driftBox"></div>
+        <div id="findingsContainer">
+          <div class="empty-hint">Les constats de securite, certificats TLS et recommandations apparaitront ici.</div>
+        </div>
+      </div>
+
+      <div id="tab-help" class="tab-body">
+        <h3 style="margin:0 0 0.65rem;font-size:0.95rem;color:var(--accent);">Aide-memoire CLI style Nmap</h3>
+        <p style="margin:0 0 0.9rem;color:var(--muted);">Cliquez sur <strong>Charger</strong> pour appliquer directement un modele dans la barre de commande ci-dessus.</p>
+        <div id="cliExamplesList"></div>
+      </div>
+    </main>
+  </div>
+
+  <footer class="statusbar">
+    <div id="statusText" class="mono">Pret</div>
+    <div style="display:flex;align-items:center;gap:0.75rem;">
+      <div class="prog-track"><div class="prog-bar-fill" id="progFill"></div></div>
+      <span id="progPct" class="mono">0%</span>
+    </div>
+    <div class="mono" id="engineStatus">Moteur Go natif actif</div>
+  </footer>
+</div>
 
 <script>
-  let activeProfile = 'quick';
-  let currentReport = null;
-  let baselineReport = null;
-  let activeScanId = null;
+(() => {
+  const TIMINGS = {
+    T1: { concurrency: 2,   timeoutMs: 3000, delayMs: 250, retries: 1 },
+    T2: { concurrency: 8,   timeoutMs: 2000, delayMs: 60,  retries: 1 },
+    T3: { concurrency: 24,  timeoutMs: 1000, delayMs: 0,   retries: 0 },
+    T4: { concurrency: 64,  timeoutMs: 500,  delayMs: 0,   retries: 1 },
+    T5: { concurrency: 128, timeoutMs: 250,  delayMs: 0,   retries: 0 },
+  };
 
-  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const PRESETS = {
+    fast:       { profile: 'quick',      ports: '',       banner: false, tls: false, http: false, dns: false, timing: 'T4' },
+    intense:    { profile: 'top100',     ports: '',       banner: true,  tls: true,  http: true,  dns: false, timing: 'T3' },
+    standard:   { profile: 'top100',     ports: '',       banner: false, tls: false, http: false, dns: false, timing: 'T3' },
+    version:    { profile: 'top100',     ports: '',       banner: true,  tls: false, http: false, dns: false, timing: 'T3' },
+    web:        { profile: 'web',        ports: '',       banner: true,  tls: true,  http: true,  dns: false, timing: 'T3' },
+    database:   { profile: 'database',   ports: '',       banner: true,  tls: true,  http: false, dns: false, timing: 'T3' },
+    infra:      { profile: 'infra',      ports: '',       banner: true,  tls: true,  http: true,  dns: false, timing: 'T3' },
+    containers: { profile: 'containers', ports: '',       banner: true,  tls: true,  http: true,  dns: false, timing: 'T3' },
+    iot:        { profile: 'iot',        ports: '',       banner: true,  tls: false, http: true,  dns: false, timing: 'T2' },
+    full1024:   { profile: '',           ports: '1-1024', banner: true,  tls: false, http: false, dns: false, timing: 'T4' },
+  };
 
-  function setError(msg) {
-    const el = document.getElementById('errBox');
-    if (!msg) { el.classList.remove('visible'); el.textContent = ''; return; }
-    el.textContent = msg;
-    el.classList.add('visible');
-  }
+  const CLI_RECIPES = [
+    { title: 'Scan rapide des 18 ports critiques (equivalent nmap -F)', cmd: 'sentinel-net -F 127.0.0.1 -y', target: '127.0.0.1', preset: 'fast' },
+    { title: 'Audit complet services + TLS X.509 + en-tetes HTTP (equivalent nmap -A)', cmd: 'sentinel-net -A 127.0.0.1 -y', target: '127.0.0.1', preset: 'intense' },
+    { title: 'Decouverte rapide d un sous-reseau local /24 en cadence -T4', cmd: 'sentinel-net -F -T4 192.168.1.0/24 -y', target: '192.168.1.0/24', preset: 'fast' },
+    { title: 'Detection des versions et bannieres sur ports specifiques (-sV -p)', cmd: 'sentinel-net -sV -p 22,80,443,3306,5432,6379 127.0.0.1 -y', target: '127.0.0.1', ports: '22,80,443,3306,5432,6379', banner: true },
+    { title: 'Audit des serveurs Web et certificats HTTPS (-P web -sC)', cmd: 'sentinel-net -P web -sC 127.0.0.1 -y', target: '127.0.0.1', preset: 'web' },
+    { title: 'Verification d exposition des bases de donnees (-P database -sV)', cmd: 'sentinel-net -P database -sV 127.0.0.1 -y', target: '127.0.0.1', preset: 'database' },
+    { title: 'Export simultane tous formats : .txt, .json, .html, .sarif (-oA)', cmd: 'sentinel-net -A 127.0.0.1 -oA rapport-audit -y', target: '127.0.0.1', preset: 'intense' },
+  ];
 
-  async function bootstrap() {
-    try {
-      const [hRes, iRes, pRes] = await Promise.all([
-        fetch('/api/health'),
-        fetch('/api/interfaces'),
-        fetch('/api/profiles')
-      ]);
-      const health = await hRes.json();
-      document.getElementById('verTag').textContent = 'v' + (health.version || '1.0.0');
+  const state = {
+    desktopMode: false,
+    activeScanId: null,
+    currentProfile: 'top100',
+    report: null,
+    nmapText: '',
+    baseline: null,
+    interfaces: [],
+    history: [],
+    sideTab: 'hosts',
+    selectedHost: null,
+    selectedPort: null,
+  };
 
-      const nics = await iRes.json();
-      const nicWrap = document.getElementById('nicChips');
-      const seen = new Set();
-      for (const nic of (nics.interfaces || [])) {
-        if (nic.family !== 'IPv4' || seen.has(nic.address)) continue;
-        seen.add(nic.address);
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'chip mono';
-        b.textContent = nic.interface + ': ' + nic.address;
-        b.onclick = () => { document.getElementById('targetInput').value = nic.address; };
-        nicWrap.appendChild(b);
-      }
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-      const profs = await pRes.json();
-      const profWrap = document.getElementById('profileChips');
-      const list = [...(profs.profiles || []), { id: '', ports: [], description: 'Ports personnalises' }];
-      function drawProfiles() {
-        profWrap.innerHTML = '';
-        for (const p of list) {
-          const b = document.createElement('button');
-          b.type = 'button';
-          b.className = 'chip' + (activeProfile === p.id ? ' active' : '');
-          b.textContent = p.id ? (p.id + ' (' + p.ports.length + ')') : 'custom';
-          b.title = p.description || '';
-          b.onclick = () => { activeProfile = p.id; drawProfiles(); };
-          profWrap.appendChild(b);
-        }
-      }
-      drawProfiles();
-    } catch (e) {
-      setError('Erreur d initialisation: ' + e.message);
+  function showErr(msg) {
+    const b = $('errBanner');
+    if (!msg) {
+      b.textContent = '';
+      b.classList.remove('visible');
+      return;
     }
+    b.textContent = msg;
+    b.classList.add('visible');
   }
 
-  document.querySelectorAll('.tab').forEach(btn => {
+  function buildCommandPreview() {
+    const parts = ['sentinel-net'];
+    const ports = $('portsInput').value.trim();
+    const prof = state.currentProfile;
+    const timing = $('timingSelect').value;
+    const b = $('chkBanner').checked;
+    const t = $('chkTLS').checked;
+    const h = $('chkHTTP').checked;
+    const r = $('chkDNS').checked;
+
+    if (ports === '-' || ports === '1-4096') {
+      parts.push('-p-');
+    } else if (ports) {
+      parts.push('-p', ports);
+    } else if (prof === 'quick') {
+      parts.push('-F');
+    } else if (prof && prof !== 'top100') {
+      parts.push('-P', prof);
+    }
+
+    if (b && t && h) {
+      parts.push('-A');
+    } else {
+      if (b) parts.push('-sV');
+      if (t && h) parts.push('-sC');
+      else {
+        if (t) parts.push('--tls');
+        if (h) parts.push('--http');
+      }
+    }
+
+    if (r) parts.push('-R');
+    if (timing && timing !== 'T3') parts.push('-' + timing);
+
+    const tgt = $('targetInput').value.trim() || '127.0.0.1';
+    parts.push(tgt);
+    if ($('chkAuth').checked) parts.push('-y');
+    $('cmdPreview').value = parts.join(' ');
+  }
+
+  function applyPreset(name) {
+    const p = PRESETS[name];
+    if (!p) return;
+    state.currentProfile = p.profile;
+    $('portsInput').value = p.ports;
+    $('chkBanner').checked = p.banner;
+    $('chkTLS').checked = p.tls;
+    $('chkHTTP').checked = p.http;
+    $('chkDNS').checked = p.dns;
+    $('timingSelect').value = p.timing;
+    buildCommandPreview();
+  }
+
+  function parseCommandBox(raw) {
+    const tokens = raw.trim().split(/\s+/).filter(Boolean);
+    if (!tokens.length) return;
+    let i = tokens[0].includes('sentinel-net') ? 1 : 0;
+    if (tokens[i] === 'scan') i++;
+
+    let prof = 'top100';
+    let ports = '';
+    let banner = false, tls = false, http = false, dns = false, auth = $('chkAuth').checked;
+    let timing = 'T3';
+    const targets = [];
+
+    for (; i < tokens.length; i++) {
+      const tok = tokens[i];
+      if (tok === '-F') { prof = 'quick'; ports = ''; }
+      else if (tok === '-p-') { ports = '1-4096'; prof = ''; }
+      else if (tok === '-p' || tok === '--ports') { ports = tokens[++i] || ''; prof = ''; }
+      else if (tok.startsWith('-p') && tok.length > 2) { ports = tok.slice(2); prof = ''; }
+      else if (tok === '-P' || tok === '--profile') { prof = tokens[++i] || 'top100'; }
+      else if (tok === '-A' || tok === '--inspect' || tok === '-i') { banner = true; tls = true; http = true; }
+      else if (tok === '-sV' || tok === '--banner') { banner = true; }
+      else if (tok === '-sC') { tls = true; http = true; }
+      else if (tok === '--tls') { tls = true; }
+      else if (tok === '--http') { http = true; }
+      else if (tok === '-R' || tok === '--resolve') { dns = true; }
+      else if (tok === '-y' || tok === '--authorized') { auth = true; }
+      else if (/^-T[1-5]$/.test(tok)) { timing = tok.slice(1); }
+      else if (!tok.startsWith('-')) { targets.push(tok); }
+    }
+
+    state.currentProfile = prof;
+    $('portsInput').value = ports;
+    $('chkBanner').checked = banner;
+    $('chkTLS').checked = tls;
+    $('chkHTTP').checked = http;
+    $('chkDNS').checked = dns;
+    $('chkAuth').checked = auth;
+    $('authPill').classList.toggle('checked', auth);
+    $('timingSelect').value = timing;
+    if (targets.length) $('targetInput').value = targets.join(' ');
+    $('presetSelect').value = 'custom';
+  }
+
+  $('presetSelect').addEventListener('change', (e) => {
+    if (e.target.value !== 'custom') applyPreset(e.target.value);
+  });
+  ['targetInput', 'timingSelect', 'chkBanner', 'chkTLS', 'chkHTTP', 'chkDNS', 'portsInput'].forEach((id) => {
+    $(id).addEventListener('input', () => {
+      if (id === 'portsInput' && $('portsInput').value.trim() !== '') {
+        $('presetSelect').value = 'custom';
+        state.currentProfile = '';
+      }
+      buildCommandPreview();
+    });
+    $(id).addEventListener('change', buildCommandPreview);
+  });
+  $('chkAuth').addEventListener('change', () => {
+    $('authPill').classList.toggle('checked', $('chkAuth').checked);
+    buildCommandPreview();
+  });
+  $('cmdPreview').addEventListener('change', () => parseCommandBox($('cmdPreview').value));
+  $('targetInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !$('btnScan').disabled) startScan();
+  });
+  $('cmdPreview').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !$('btnScan').disabled) {
+      parseCommandBox($('cmdPreview').value);
+      startScan();
+    }
+  });
+  $('btnCopyCmd').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText($('cmdPreview').value);
+      $('btnCopyCmd').textContent = 'Copie !';
+      setTimeout(() => { $('btnCopyCmd').textContent = 'Copier'; }, 1200);
+    } catch (_) {}
+  });
+
+  // View tabs
+  document.querySelectorAll('.vtab').forEach((btn) => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-      document.querySelectorAll('.pane').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.vtab').forEach((x) => x.classList.remove('active'));
+      document.querySelectorAll('.tab-body').forEach((x) => x.classList.remove('active'));
       btn.classList.add('active');
-      document.getElementById('pane-' + btn.dataset.tab).classList.add('active');
+      $('tab-' + btn.dataset.vtab).classList.add('active');
     });
   });
 
-  document.getElementById('runBtn').addEventListener('click', async () => {
-    setError('');
-    if (!document.getElementById('chkAuthorized').checked) {
-      setError('Veuillez cocher la confirmation d autorisation explicite avant de scanner.');
+  // Sidebar tabs
+  document.querySelectorAll('.side-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.side-tab').forEach((x) => x.classList.remove('active'));
+      btn.classList.add('active');
+      state.sideTab = btn.dataset.stab;
+      renderSidebar();
+    });
+  });
+
+  function ipv4Subnet24(ip) {
+    const m = /^(\d+\.\d+\.\d+)\.\d+$/.exec(ip);
+    return m ? `${m[1]}.0/24` : null;
+  }
+
+  function renderSidebar() {
+    const box = $('sideContent');
+    if (state.sideTab === 'nics') {
+      if (!state.interfaces.length) {
+        box.innerHTML = '<div class="empty-hint" style="padding:1rem;">Aucune interface detectee.</div>';
+        return;
+      }
+      box.innerHTML = state.interfaces.map((nic) => {
+        const sub24 = !nic.internal && nic.family === 'IPv4' ? ipv4Subnet24(nic.address) : null;
+        return `<div class="side-item" style="flex-direction:column;align-items:stretch;cursor:default;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <strong class="mono" style="font-size:0.78rem;">${esc(nic.interface)}</strong>
+            <span class="grade-mini mono">${esc(nic.scope)}</span>
+          </div>
+          <div class="mono" style="font-size:0.75rem;color:var(--muted);margin:0.2rem 0 0.35rem;">${esc(nic.address)}</div>
+          <div style="display:flex;gap:0.35rem;flex-wrap:wrap;">
+            <button class="btn btn-xs" data-fill-target="${esc(nic.address)}">Cibler IP</button>
+            ${sub24 ? `<button class="btn btn-xs" data-fill-target="${esc(sub24)}">Sous-reseau /24</button>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+      box.querySelectorAll('[data-fill-target]').forEach((b) => {
+        b.addEventListener('click', () => {
+          $('targetInput').value = b.dataset.fillTarget;
+          buildCommandPreview();
+        });
+      });
       return;
     }
 
-    const body = {
-      authorized: true,
-      target: document.getElementById('targetInput').value.trim(),
-      profile: activeProfile || '',
-      ports: document.getElementById('portsInput').value.trim(),
-      timeoutMs: Number(document.getElementById('timeoutInput').value) || 800,
-      concurrency: Number(document.getElementById('concurrencyInput').value) || 24,
-      banner: document.getElementById('chkBanner').checked,
-      tls: document.getElementById('chkTls').checked,
-      http: document.getElementById('chkHttp').checked,
-      resolveDns: document.getElementById('chkResolve').checked,
-      baseline: baselineReport
-    };
+    if (!state.report) {
+      box.innerHTML = '<div class="empty-hint" style="padding:1.4rem 0.4rem;font-size:0.78rem;">Aucun resultat pour le moment.<br/>Cliquez sur l onglet <strong>Interfaces</strong> pour choisir une cible locale.</div>';
+      return;
+    }
 
-    const runBtn = document.getElementById('runBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const progBox = document.getElementById('progBox');
-    const progFill = document.getElementById('progFill');
-    const progLabel = document.getElementById('progLabel');
-    const progPct = document.getElementById('progPct');
+    if (state.sideTab === 'hosts') {
+      const allActive = !state.selectedHost && !state.selectedPort ? 'active' : '';
+      let html = `<div class="side-item ${allActive}" data-host="">
+        <span style="font-weight:600;">Tous les hotes (${state.report.hosts.length})</span>
+        <span class="grade-mini mono">${state.report.summary.openPorts} open</span>
+      </div>`;
+      html += state.report.hosts.map((h) => {
+        const isSel = state.selectedHost === h.target ? 'active' : '';
+        const dotCls = h.counts.open > 0 ? 'dot-open' : 'dot-idle';
+        return `<div class="side-item ${isSel}" data-host="${esc(h.target)}">
+          <div style="display:flex;align-items:center;gap:0.45rem;min-width:0;">
+            <span class="dot ${dotCls}"></span>
+            <span class="mono" style="overflow:hidden;text-overflow:ellipsis;">${esc(h.target)}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.3rem;">
+            <span style="font-size:0.72rem;color:var(--muted);">${h.counts.open}</span>
+            <span class="grade-mini mono">${esc(h.risk.grade)}</span>
+          </div>
+        </div>`;
+      }).join('');
+      box.innerHTML = html;
+      box.querySelectorAll('[data-host]').forEach((el) => {
+        el.addEventListener('click', () => {
+          state.selectedHost = el.dataset.host || null;
+          state.selectedPort = null;
+          renderAllViews();
+        });
+      });
+      return;
+    }
 
-    runBtn.disabled = true;
-    stopBtn.style.display = '';
-    progBox.classList.add('visible');
-    progFill.style.width = '2%';
-    progLabel.textContent = 'Demarrage...';
-    progPct.textContent = '0%';
+    // Services tab
+    const svcMap = new Map();
+    state.report.observations.forEach((o) => {
+      if (o.state !== 'open') return;
+      const key = `${o.port}:${o.service?.id || o.service?.label || 'unknown'}`;
+      svcMap.set(key, (svcMap.get(key) || 0) + 1);
+    });
+    if (!svcMap.size) {
+      box.innerHTML = '<div class="empty-hint" style="padding:1.2rem;">Aucun service ouvert detecte.</div>';
+      return;
+    }
+    box.innerHTML = Array.from(svcMap.entries()).map(([k, count]) => {
+      const [portStr, name] = k.split(':');
+      const pNum = Number(portStr);
+      const isSel = state.selectedPort === pNum ? 'active' : '';
+      return `<div class="side-item ${isSel}" data-port="${pNum}">
+        <span class="mono"><strong>${esc(name)}</strong> (${pNum}/tcp)</span>
+        <span class="grade-mini mono">${count} hote(s)</span>
+      </div>`;
+    }).join('');
+    box.querySelectorAll('[data-port]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const p = Number(el.dataset.port);
+        state.selectedPort = state.selectedPort === p ? null : p;
+        state.selectedHost = null;
+        document.querySelector('[data-vtab="ports"]').click();
+        renderAllViews();
+      });
+    });
+  }
+
+  function renderHistory() {
+    const hBox = $('historyList');
+    if (!state.history.length) return;
+    hBox.innerHTML = state.history.map((item, idx) => `
+      <div class="side-item" data-hist="${idx}" style="padding:0.3rem 0.45rem;font-size:0.74rem;">
+        <span class="mono" style="overflow:hidden;text-overflow:ellipsis;">${esc(item.label)}</span>
+        <span class="grade-mini mono">${esc(item.report.risk.grade)}</span>
+      </div>
+    `).join('');
+    hBox.querySelectorAll('[data-hist]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const entry = state.history[Number(el.dataset.hist)];
+        if (!entry) return;
+        state.report = entry.report;
+        state.nmapText = entry.nmapText;
+        state.selectedHost = null;
+        state.selectedPort = null;
+        renderAllViews();
+      });
+    });
+  }
+
+  function highlightNmap(text) {
+    return esc(text).split('\n').map((line) => {
+      if (line.startsWith('Starting Sentinel Net') || line.startsWith('Sentinel Net scan report')) {
+        return `<span class="c-hdr">${line}</span>`;
+      }
+      if (/^\d+\/tcp\s+open\b/.test(line)) return `<span class="c-open">${line}</span>`;
+      if (/^\d+\/tcp\s+closed\b/.test(line)) return `<span class="c-closed">${line}</span>`;
+      if (/^\d+\/tcp\s+unknown\b/.test(line)) return `<span class="c-unk">${line}</span>`;
+      if (line.startsWith('|_')) return `<span class="c-sub">${line}</span>`;
+      if (line.includes('[CRITICAL]') || line.includes('[HIGH]')) return `<span class="c-crit">${line}</span>`;
+      if (line.includes('[MEDIUM]')) return `<span class="c-warn">${line}</span>`;
+      return line;
+    }).join('\n');
+  }
+
+  function renderNmapPane() {
+    if (!state.report) return;
+    if (state.selectedHost) {
+      const hostObj = state.report.hosts.find((h) => h.target === state.selectedHost);
+      if (hostObj) {
+        const lines = [
+          `Sentinel Net scan report for ${hostObj.target} [scope: ${hostObj.scope}]`,
+          `Host posture: ${hostObj.risk.score}/100 (grade ${hostObj.risk.grade}) | ${hostObj.counts.open}/${hostObj.counts.total} open`,
+          '',
+          'PORT       STATE     SERVICE           LATENCY    DETAILS',
+        ];
+        hostObj.observations.forEach((o) => {
+          const p = `${o.port}/tcp`.padEnd(11);
+          const st = o.state.padEnd(10);
+          const sv = (o.service?.id || o.service?.label || 'unknown').padEnd(18);
+          const lt = (o.latencyMs != null ? `${o.latencyMs.toFixed(2)}ms` : '-').padEnd(11);
+          lines.push(`${p}${st}${sv}${lt}${o.service?.product || o.service?.description || ''}`);
+          if (o.inspection?.banner) lines.push(`|_ banner: ${o.inspection.banner}`);
+          if (o.inspection?.tls?.established) {
+            const c = o.inspection.tls.certificate;
+            lines.push(`|_ ssl-cert: ${o.inspection.tls.protocol} ${c ? `CN=${c.subjectCN} (${c.daysRemaining}d)` : ''}`);
+          }
+          if (o.inspection?.http?.statusCode) {
+            lines.push(`|_ http-headers: HTTP ${o.inspection.http.statusCode} missing=[${(o.inspection.http.missingSecurityHeaders || []).join(', ')}]`);
+          }
+        });
+        $('nmapConsole').innerHTML = highlightNmap(lines.join('\n'));
+        return;
+      }
+    }
+    $('nmapConsole').innerHTML = highlightNmap(state.nmapText);
+  }
+
+  function renderPortsPane() {
+    const box = $('portsContainer');
+    const resetBtn = $('btnResetHostFilter');
+    resetBtn.style.display = (state.selectedHost || state.selectedPort) ? 'inline-block' : 'none';
+    if (!state.report) return;
+
+    const q = $('portSearch').value.trim().toLowerCase();
+    const sf = $('stateFilter').value;
+
+    const rows = state.report.observations.filter((o) => {
+      if (state.selectedHost && o.target !== state.selectedHost) return false;
+      if (state.selectedPort && o.port !== state.selectedPort) return false;
+      if (sf !== 'all' && o.state !== sf) return false;
+      if (!q) return true;
+      const hay = `${o.target} ${o.port} ${o.service?.id || ''} ${o.service?.label || ''} ${o.service?.product || ''} ${o.inspection?.banner || ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+
+    if (!rows.length) {
+      box.innerHTML = '<div class="empty-hint">Aucune sonde ne correspond aux filtres actifs.</div>';
+      return;
+    }
+
+    box.innerHTML = `<table class="grid-tbl">
+      <thead>
+        <tr>
+          <th>Hote</th>
+          <th>Port</th>
+          <th>Etat</th>
+          <th>Latence</th>
+          <th>Service</th>
+          <th>Inspection (Banniere / TLS / HTTP)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((o) => {
+          const det = [];
+          if (o.service?.product) det.push(`<strong>${esc(o.service.product)}</strong>`);
+          if (o.inspection?.tls?.established) {
+            const c = o.inspection.tls.certificate;
+            det.push(`<span class="mono">${esc(o.inspection.tls.protocol)}${c ? ` CN=${esc(c.subjectCN)} (${c.daysRemaining}j)` : ''}</span>`);
+          }
+          if (o.inspection?.http?.statusCode) {
+            const miss = (o.inspection.http.missingSecurityHeaders || []).length;
+            det.push(`HTTP ${o.inspection.http.statusCode}${miss ? ` (-${miss} en-tetes)` : ' (OK)'}`);
+          }
+          if (o.inspection?.banner) det.push(`<code class="mono" style="color:#93c5fd;">${esc(o.inspection.banner.slice(0, 75))}</code>`);
+          return `<tr>
+            <td class="mono">${esc(o.target)}</td>
+            <td class="mono"><strong>${o.port}</strong>/tcp</td>
+            <td><span class="st-badge st-${esc(o.state)}">${esc(o.state)}</span></td>
+            <td class="mono">${o.latencyMs != null ? o.latencyMs.toFixed(2) + ' ms' : '-'}</td>
+            <td>${esc(o.service?.label || o.service?.id || 'unknown')}</td>
+            <td>${det.join(' | ') || `<span style="color:var(--muted)">${esc(o.service?.description || '-')}</span>`}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+  }
+
+  function gradeStroke(score) {
+    if (score >= 88) return '#10b981';
+    if (score >= 65) return '#f59e0b';
+    return '#ef4444';
+  }
+
+  function renderTopologyPane() {
+    const wrap = $('topoCanvas');
+    if (!state.report || !state.report.hosts.length) return;
+    const W = 820, H = 460, cx = W / 2, cy = H / 2;
+    const hosts = state.report.hosts.slice(0, 24);
+    const lines = [];
+    const nodes = [];
+
+    nodes.push(`<g>
+      <circle cx="${cx}" cy="${cy}" r="26" fill="#0e2238" stroke="#22d3ee" stroke-width="2.5"/>
+      <text x="${cx}" y="${cy + 4}" text-anchor="middle" fill="#e6edf7" font-size="10" font-weight="700">SCANNER</text>
+    </g>`);
+
+    hosts.forEach((h, idx) => {
+      const ang = (2 * Math.PI * idx) / hosts.length - Math.PI / 2;
+      const dist = hosts.length === 1 ? 0 : 125;
+      const hx = hosts.length === 1 ? cx + 120 : cx + Math.cos(ang) * dist;
+      const hy = hosts.length === 1 ? cy : cy + Math.sin(ang) * dist;
+      const col = gradeStroke(h.risk.score);
+
+      lines.push(`<line x1="${cx}" y1="${cy}" x2="${hx}" y2="${hy}" stroke="#233554" stroke-width="1.8"/>`);
+      nodes.push(`<g style="cursor:pointer" data-topo-host="${esc(h.target)}">
+        <circle cx="${hx}" cy="${hy}" r="20" fill="#111b2e" stroke="${col}" stroke-width="2.5"/>
+        <text x="${hx}" y="${hy + 3}" text-anchor="middle" fill="${col}" font-size="10" font-weight="700">${esc(h.risk.grade)}</text>
+        <text x="${hx}" y="${hy + 33}" text-anchor="middle" fill="#cbd5e1" font-size="10.5" font-family="monospace">${esc(h.target)}</text>
+      </g>`);
+
+      const openObs = h.observations.filter((o) => o.state === 'open').slice(0, 12);
+      openObs.forEach((o, pidx) => {
+        const spread = openObs.length === 1 ? 0 : ((pidx / (openObs.length - 1)) - 0.5) * 1.4;
+        const pang = hosts.length === 1 ? (2 * Math.PI * pidx) / Math.max(openObs.length, 1) : ang + spread;
+        const px = hx + Math.cos(pang) * 78;
+        const py = hy + Math.sin(pang) * 78;
+        lines.push(`<line x1="${hx}" y1="${hy}" x2="${px}" y2="${py}" stroke="rgba(16,185,129,0.45)" stroke-width="1.3"/>`);
+        nodes.push(`<g>
+          <circle cx="${px}" cy="${py}" r="12" fill="#07281f" stroke="#10b981" stroke-width="1.5"/>
+          <text x="${px}" y="${py + 3}" text-anchor="middle" fill="#6ee7b7" font-size="8.5" font-family="monospace">${o.port}</text>
+        </g>`);
+      });
+    });
+
+    wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" style="max-height:480px;">
+      ${lines.join('')}
+      ${nodes.join('')}
+    </svg>`;
+    wrap.querySelectorAll('[data-topo-host]').forEach((g) => {
+      g.addEventListener('click', () => {
+        state.selectedHost = g.dataset.topoHost;
+        document.querySelector('[data-vtab="ports"]').click();
+        renderAllViews();
+      });
+    });
+  }
+
+  function renderRisksPane() {
+    if (!state.report) return;
+    const s = state.report.summary;
+    const r = state.report.risk;
+    $('kpiScore').textContent = `${r.score}/100`;
+    $('kpiScore').style.color = gradeStroke(r.score);
+    $('kpiGrade').textContent = `Note ${r.grade} (${r.level})`;
+    $('kpiOpen').textContent = String(s.openPorts);
+    $('kpiHosts').textContent = `${s.hostsWithOpenPorts}/${s.hostsScanned} hote(s) actifs`;
+    $('kpiFindings').textContent = String(r.actionableFindings);
+    $('kpiSev').textContent = `${r.counts.critical} crit | ${r.counts.high} high | ${r.counts.medium} med`;
+    $('kpiRtt').textContent = s.latency.avgMs != null ? `${s.latency.avgMs} ms` : 'n/a';
+    $('kpiDur').textContent = `Duree totale : ${(s.durationMs / 1000).toFixed(2)} s`;
+
+    const dBox = $('driftBox');
+    if (state.report.drift) {
+      const d = state.report.drift;
+      const deltaNum = d.scoreDelta?.delta ?? 0;
+      dBox.innerHTML = `<div class="finding-card" style="border-left-color:${d.hasDrift ? 'var(--red)' : 'var(--green)'};margin-bottom:0.85rem;">
+        <strong>Comparaison Baseline :</strong> ${d.hasDrift ? 'Derive detectee' : 'Aucune derive d exposition'}
+        <div class="mono" style="font-size:0.78rem;color:var(--muted);margin-top:0.25rem;">
+          Nouveaux ports ouverts: ${d.counts?.newlyOpened ?? 0} | Ports fermes: ${d.counts?.newlyClosed ?? 0} | Delta score: ${deltaNum >= 0 ? '+' : ''}${deltaNum}
+        </div>
+      </div>`;
+    } else {
+      dBox.innerHTML = '';
+    }
+
+    const actionable = r.findings.filter((f) => f.severity !== 'info' && (!state.selectedHost || f.host === state.selectedHost));
+    const fBox = $('findingsContainer');
+    if (!actionable.length) {
+      fBox.innerHTML = '<div class="empty-hint">Aucun constat de risque critique, eleve ou modere sur la selection courante.</div>';
+      return;
+    }
+    fBox.innerHTML = actionable.map((f) => `
+      <div class="finding-card sev-${esc(f.severity)}">
+        <div style="display:flex;justify-content:space-between;gap:0.5rem;flex-wrap:wrap;">
+          <div>
+            <span class="sev-pill sp-${esc(f.severity)}">${esc(f.severity)}</span>
+            <strong style="margin-left:0.4rem;">${esc(f.title)}</strong>
+          </div>
+          <span class="mono" style="font-size:0.76rem;color:var(--muted);">${esc(f.ruleId)} | ${esc(f.host)}${f.port ? ':' + f.port : ''}</span>
+        </div>
+        <div class="mono" style="font-size:0.77rem;color:#93c5fd;margin:0.35rem 0;">Preuve : ${esc(f.evidence)}</div>
+        <div style="font-size:0.8rem;color:var(--muted);">Remediation : ${esc(f.remediation)}</div>
+      </div>
+    `).join('');
+  }
+
+  function renderAllViews() {
+    renderSidebar();
+    renderHistory();
+    renderNmapPane();
+    renderPortsPane();
+    renderTopologyPane();
+    renderRisksPane();
+  }
+
+  $('portSearch').addEventListener('input', renderPortsPane);
+  $('stateFilter').addEventListener('change', renderPortsPane);
+  $('btnResetHostFilter').addEventListener('click', () => {
+    state.selectedHost = null;
+    state.selectedPort = null;
+    renderAllViews();
+  });
+
+  // Baseline loader
+  $('btnLoadBase').addEventListener('click', () => $('baselineFile').click());
+  $('baselineFile').addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      state.baseline = parsed.report || parsed;
+      $('baseBadge').textContent = `[Baseline: ${file.name}]`;
+    } catch (_) {
+      showErr('Fichier baseline JSON invalide.');
+    }
+  });
+
+  // Scan execution via NDJSON stream
+  async function startScan() {
+    showErr('');
+    if (!$('chkAuth').checked) {
+      showErr("Confirmation requise : cochez 'J ai l autorisation d analyser ces cibles (-y)' avant de lancer le scan.");
+      return;
+    }
+    const target = $('targetInput').value.trim();
+    if (!target) {
+      showErr('Indiquez au moins une cible IP, CIDR ou plage.');
+      return;
+    }
+
+    const tCfg = TIMINGS[$('timingSelect').value] || TIMINGS.T3;
+    const portsVal = $('portsInput').value.trim();
+
+    $('btnScan').disabled = true;
+    $('btnStop').disabled = false;
+    $('progFill').style.width = '0%';
+    $('progPct').textContent = '0%';
+    $('statusText').textContent = `Initialisation du scan sur ${target}...`;
+    $('nmapConsole').textContent = `Starting Sentinel Net...\nCommande : ${$('cmdPreview').value}\n`;
+
+    const liveLines = [`Starting Sentinel Net (${$('cmdPreview').value})...`];
 
     try {
-      const res = await fetch('/api/scan', {
+      const resp = await fetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({
+          authorized: true,
+          target,
+          profile: portsVal ? '' : state.currentProfile,
+          ports: portsVal,
+          timeoutMs: tCfg.timeoutMs,
+          concurrency: tCfg.concurrency,
+          retries: tCfg.retries,
+          delayMs: tCfg.delayMs,
+          banner: $('chkBanner').checked,
+          tls: $('chkTLS').checked,
+          http: $('chkHTTP').checked,
+          resolveDns: $('chkDNS').checked,
+          baseline: state.baseline,
+        }),
       });
-      if (!res.ok) {
-        const errObj = await res.json().catch(() => ({ error: 'HTTP ' + res.status }));
-        throw new Error(errObj.error || 'Echec de la requete');
+
+      if (!resp.ok) {
+        const errDoc = await resp.json().catch(() => ({}));
+        throw new Error(errDoc.error || `Erreur HTTP ${resp.status}`);
       }
 
-      const reader = res.body.getReader();
+      const reader = resp.body.getReader();
       const dec = new TextDecoder();
       let buf = '';
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         buf += dec.decode(value, { stream: true });
         const lines = buf.split('\n');
-        buf = lines.pop();
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          const ev = JSON.parse(line);
+        buf = lines.pop() || '';
+
+        for (const raw of lines) {
+          if (!raw.trim()) continue;
+          const ev = JSON.parse(raw);
           if (ev.type === 'started') {
-            activeScanId = ev.scanId;
+            state.activeScanId = ev.scanId;
+            liveLines.push(`Scanning ${ev.hostsCount} host(s) x ${ev.portsCount} port(s)...`);
+            $('nmapConsole').textContent = liveLines.join('\n');
           } else if (ev.type === 'progress') {
-            progFill.style.width = ev.percent + '%';
-            progPct.textContent = ev.percent + '%';
-            progLabel.textContent = ev.target + ':' + ev.port + ' (' + ev.state + ')';
-          } else if (ev.type === 'complete') {
-            currentReport = ev.report;
-            progFill.style.width = '100%';
-            progPct.textContent = '100%';
-            progLabel.textContent = 'Termine en ' + ev.report.summary.durationMs + ' ms';
-            renderAll(ev.report);
+            $('progFill').style.width = `${ev.percent}%`;
+            $('progPct').textContent = `${ev.percent}%`;
+            $('statusText').textContent = `Sonde ${ev.target}:${ev.port} (${ev.state})`;
+            if (ev.state === 'open') {
+              liveLines.push(`Discovered open port ${ev.port}/tcp on ${ev.target}`);
+              $('nmapConsole').textContent = liveLines.join('\n');
+            }
           } else if (ev.type === 'error') {
             throw new Error(ev.error);
+          } else if (ev.type === 'complete') {
+            state.report = ev.report;
+            state.nmapText = ev.nmapOutput || '';
+            state.selectedHost = null;
+            state.selectedPort = null;
+            state.history.unshift({
+              label: `${target} (${new Date().toLocaleTimeString()})`,
+              report: ev.report,
+              nmapText: state.nmapText,
+            });
+            if (state.history.length > 12) state.history.pop();
+            if (state.sideTab === 'nics') {
+              document.querySelector('[data-stab="hosts"]').click();
+            }
+            renderAllViews();
+            document.querySelectorAll('[data-exp]').forEach((b) => { b.disabled = false; });
+            $('progFill').style.width = '100%';
+            $('progPct').textContent = '100%';
+            $('statusText').textContent = `Termine en ${(ev.report.summary.durationMs / 1000).toFixed(2)} s (${ev.report.summary.openPorts} port(s) ouvert(s))`;
           }
         }
       }
-    } catch (e) {
-      setError(e.message);
+    } catch (err) {
+      showErr(err.message || String(err));
+      $('statusText').textContent = 'Scan interrompu';
     } finally {
-      activeScanId = null;
-      runBtn.disabled = false;
-      stopBtn.style.display = 'none';
+      state.activeScanId = null;
+      $('btnScan').disabled = false;
+      $('btnStop').disabled = true;
     }
-  });
+  }
 
-  document.getElementById('stopBtn').addEventListener('click', async () => {
-    if (!activeScanId) return;
+  $('btnScan').addEventListener('click', startScan);
+  $('btnStop').addEventListener('click', async () => {
+    if (!state.activeScanId) return;
     await fetch('/api/scan/cancel', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scanId: activeScanId })
+      body: JSON.stringify({ scanId: state.activeScanId }),
     }).catch(() => {});
   });
 
-  function obsSummary(o) {
-    const out = [];
-    if (o.service?.product) out.push(o.service.product);
-    if (o.inspection?.tls?.established) {
-      const c = o.inspection.tls.certificate;
-      out.push(o.inspection.tls.protocol + (c?.subjectCN ? ' CN=' + c.subjectCN : '') + (typeof c?.daysRemaining === 'number' ? ' (' + c.daysRemaining + 'j)' : ''));
-    }
-    if (o.inspection?.http?.statusCode) {
-      const m = o.inspection.http.missingSecurityHeaders?.length || 0;
-      out.push('HTTP ' + o.inspection.http.statusCode + (m > 0 ? ' (-' + m + ' sec-hdr)' : ' (headers ok)'));
-    }
-    if (o.inspection?.banner && !o.service?.product) out.push(o.inspection.banner);
-    return out.join(' | ') || o.service?.description || '';
-  }
-
-  function renderAll(rep) {
-    document.getElementById('exportBar').style.display = 'flex';
-    const r = rep.risk;
-    const s = rep.summary;
-    const gEl = document.getElementById('kpiGrade');
-    gEl.textContent = r.grade + ' (' + r.score + '/100)';
-    gEl.style.color = r.score >= 88 ? 'var(--green)' : r.score >= 60 ? 'var(--amber)' : 'var(--red)';
-    document.getElementById('kpiLevel').textContent = 'Risque ' + r.level.toUpperCase();
-    document.getElementById('kpiOpen').textContent = s.openPorts;
-    document.getElementById('kpiProbes').textContent = s.totalProbes + ' sondes sur ' + s.hostsScanned + ' hote(s)';
-    document.getElementById('kpiFindings').textContent = r.actionableFindings;
-    document.getElementById('kpiBreakdown').textContent = 'Crit: ' + r.counts.critical + ' | Eleve: ' + r.counts.high + ' | Moyen: ' + r.counts.medium;
-    document.getElementById('kpiRtt').textContent = s.latency?.avgMs != null ? (s.latency.avgMs + ' ms') : 'n/a';
-    document.getElementById('kpiDur').textContent = 'Duree: ' + s.durationMs + ' ms (P95: ' + (s.latency?.p95Ms ?? 'n/a') + ' ms)';
-
-    renderPorts();
-    renderFindings(r.findings || []);
-    renderDrift(rep.drift);
-  }
-
-  function renderPorts() {
-    if (!currentReport) return;
-    const q = document.getElementById('searchBox').value.trim().toLowerCase();
-    const st = document.getElementById('stateSelect').value;
-    const rows = [];
-    for (const h of (currentReport.hosts || [])) {
-      for (const o of (h.observations || [])) {
-        const detail = o.state === 'open' ? obsSummary(o) : ('reason=' + o.reason);
-        const hay = (h.target + ' ' + o.port + ' ' + (o.service?.label || '') + ' ' + detail).toLowerCase();
-        if (st !== 'all' && o.state !== st) continue;
-        if (q && !hay.includes(q)) continue;
-        const cls = o.state === 'open' ? 'b-open' : o.state === 'closed' ? 'b-closed' : 'b-unknown';
-        rows.push(
-          '<tr>' +
-          '<td class="mono">' + esc(h.target) + (h.hostname ? ' <span style="color:var(--muted)">(' + esc(h.hostname) + ')</span>' : '') + '</td>' +
-          '<td class="mono"><strong>' + o.port + '</strong>/tcp</td>' +
-          '<td><span class="badge ' + cls + '">' + esc(o.state.toUpperCase()) + '</span></td>' +
-          '<td class="mono">' + o.latencyMs + ' ms</td>' +
-          '<td>' + esc(o.service?.label || ('TCP/' + o.port)) + '</td>' +
-          '<td style="color:var(--muted);font-size:0.8rem">' + esc(detail) + '</td>' +
-          '</tr>'
-        );
-      }
-    }
-    document.getElementById('portsWrap').innerHTML = rows.length
-      ? '<table class="tbl"><thead><tr><th>Hote</th><th>Port</th><th>Etat</th><th>RTT</th><th>Service</th><th>Details</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>'
-      : '<div class="empty">Aucune observation ne correspond au filtre.</div>';
-  }
-
-  document.getElementById('searchBox').addEventListener('input', renderPorts);
-  document.getElementById('stateSelect').addEventListener('change', renderPorts);
-
-  function renderFindings(list) {
-    const act = list.filter(f => f.severity !== 'info');
-    if (!act.length) {
-      document.getElementById('findingsWrap').innerHTML = '<div class="empty" style="color:var(--green)">[OK] Aucun constat critique, eleve, moyen ou faible.</div>';
-      return;
-    }
-    document.getElementById('findingsWrap').innerHTML = act.map(f =>
-      '<div class="finding sev-' + esc(f.severity) + '">' +
-        '<div style="display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap;margin-bottom:0.35rem">' +
-          '<span class="pill p-' + esc(f.severity) + '">' + esc(f.severity) + '</span>' +
-          '<span class="mono" style="color:var(--muted);font-size:0.78rem">' + esc(f.ruleId) + '</span>' +
-          '<span class="mono" style="color:var(--accent);font-weight:600">' + esc(f.host + ':' + f.port) + '</span>' +
-          '<strong>' + esc(f.title) + '</strong>' +
-        '</div>' +
-        '<div style="font-size:0.83rem;margin:0.2rem 0"><strong>Preuve :</strong> ' + esc(f.evidence) + '</div>' +
-        '<div style="font-size:0.83rem;margin:0.2rem 0"><strong>Remediation :</strong> ' + esc(f.remediation) + '</div>' +
-        '<div style="font-size:0.76rem;color:var(--muted)">Confiance ' + esc(f.confidence) + ' - ' + esc(f.falsePositiveNote) + '</div>' +
-      '</div>'
-    ).join('');
-  }
-
-  function renderDrift(drift) {
-    const el = document.getElementById('driftWrap');
-    if (!baselineReport && !drift) {
-      el.innerHTML = '<div class="empty">Cliquez sur "Figer en baseline" pour suivre les changements entre deux scans.</div>';
-      return;
-    }
-    if (!drift) {
-      el.innerHTML = '<div class="empty" style="color:var(--accent)">Baseline active (' + esc(baselineReport.startedAt) + '). Lancez un nouveau scan pour comparer.</div>';
-      return;
-    }
-    if (!drift.hasDrift) {
-      el.innerHTML = '<div class="empty" style="color:var(--green)">[OK] Aucune derive detectee par rapport a la baseline.</div>';
-      return;
-    }
-    const cards = [];
-    for (const o of (drift.newlyOpened || [])) {
-      cards.push('<div class="finding sev-critical"><strong>[+ OPEN]</strong> <span class="mono">' + esc(o.host + ':' + o.port) + '</span> (' + esc(o.service) + ') - etat precedent: ' + esc(o.previousState) + '</div>');
-    }
-    for (const c of (drift.newlyClosed || [])) {
-      cards.push('<div class="finding sev-low"><strong>[- CLOSED]</strong> <span class="mono">' + esc(c.host + ':' + c.port) + '</span> (' + esc(c.previousService) + ')</div>');
-    }
-    for (const m of (drift.serviceChanges || [])) {
-      cards.push('<div class="finding sev-medium"><strong>[~ CHANGE ' + esc(m.kind) + ']</strong> <span class="mono">' + esc(m.host + ':' + m.port) + '</span> : ' + esc(m.before) + ' -> ' + esc(m.after) + '</div>');
-    }
-    el.innerHTML = cards.join('');
-  }
-
-  document.getElementById('setBaselineBtn').addEventListener('click', () => {
-    if (!currentReport) return;
-    baselineReport = currentReport;
-    renderDrift(null);
-    document.querySelector('[data-tab="drift"]').click();
-  });
-
-  document.querySelectorAll('[data-fmt]').forEach(btn => {
+  // Exports
+  document.querySelectorAll('[data-exp]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      if (!currentReport) return;
-      const fmt = btn.dataset.fmt;
-      const res = await fetch('/api/export', {
+      if (!state.report) return;
+      const format = btn.dataset.exp;
+      const resp = await fetch('/api/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ format: fmt, report: currentReport })
+        body: JSON.stringify({ format, report: state.report }),
       });
-      if (!res.ok) return;
-      const blob = await res.blob();
-      const exts = { html: 'html', sarif: 'sarif.json', json: 'json', markdown: 'md', csv: 'csv' };
-      const url = URL.createObjectURL(blob);
+      if (!resp.ok) return;
+      const blob = await resp.blob();
+      const extMap = { nmap: 'txt', html: 'html', json: 'json', sarif: 'sarif', csv: 'csv' };
       const a = document.createElement('a');
-      a.href = url;
-      a.download = 'sentinel-net-report.' + (exts[fmt] || fmt);
+      a.href = URL.createObjectURL(blob);
+      a.download = `sentinel-net-audit.${extMap[format] || 'txt'}`;
       a.click();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(a.href);
     });
   });
 
-  bootstrap();
+  // Render built-in CLI cheat sheet
+  $('cliExamplesList').innerHTML = CLI_RECIPES.map((r, idx) => `
+    <div class="cmd-card">
+      <div>
+        <div style="font-weight:600;margin-bottom:0.28rem;">${esc(r.title)}</div>
+        <code class="cmd-code mono">${esc(r.cmd)}</code>
+      </div>
+      <button class="btn btn-xs" data-recipe="${idx}">Charger</button>
+    </div>
+  `).join('');
+  $('cliExamplesList').querySelectorAll('[data-recipe]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const r = CLI_RECIPES[Number(btn.dataset.recipe)];
+      if (!r) return;
+      $('targetInput').value = r.target;
+      if (r.preset) {
+        $('presetSelect').value = r.preset;
+        applyPreset(r.preset);
+      } else {
+        $('presetSelect').value = 'custom';
+        state.currentProfile = '';
+        $('portsInput').value = r.ports || '';
+        $('chkBanner').checked = Boolean(r.banner);
+        buildCommandPreview();
+      }
+      document.querySelector('[data-vtab="nmap"]').click();
+    });
+  });
+
+  // Init health, interfaces & desktop window lifecycle
+  (async () => {
+    applyPreset('intense');
+    try {
+      const h = await fetch('/api/health').then((r) => r.json());
+      if (h.version) $('verTag').textContent = 'v' + h.version;
+      state.desktopMode = Boolean(h.desktopMode);
+      if (state.desktopMode) {
+        setInterval(() => {
+          fetch('/api/heartbeat', { method: 'POST' }).catch(() => {});
+        }, 4000);
+        window.addEventListener('pagehide', () => {
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon('/api/window-closed', '{}');
+          }
+        });
+      }
+      const nicDoc = await fetch('/api/interfaces').then((r) => r.json());
+      state.interfaces = nicDoc.interfaces || [];
+      if (!state.report) {
+        state.sideTab = 'nics';
+        document.querySelectorAll('.side-tab').forEach((x) => x.classList.toggle('active', x.dataset.stab === 'nics'));
+        renderSidebar();
+      }
+    } catch (_) {}
+  })();
+})();
 </script>
 </body>
 </html>

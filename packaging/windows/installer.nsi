@@ -1,10 +1,13 @@
 Unicode True
 
 !ifndef VERSION
-  !define VERSION "1.0.0"
+  !define VERSION "1.1.0"
 !endif
-!ifndef BIN_PATH
-  !define BIN_PATH "..\..\dist\sentinel-net-windows-amd64.exe"
+!ifndef CLI_BIN
+  !define CLI_BIN "..\..\dist\sentinel-net-windows-amd64.exe"
+!endif
+!ifndef GUI_BIN
+  !define GUI_BIN "..\..\dist\sentinel-net-gui-windows-amd64.exe"
 !endif
 
 !include "MUI2.nsh"
@@ -19,9 +22,8 @@ BrandingText "Sentinel Net v${VERSION}"
 !define MUI_ICON "..\..\assets\icon.ico"
 !define MUI_UNICON "..\..\assets\icon.ico"
 !define MUI_ABORTWARNING
-!define MUI_FINISHPAGE_RUN "$INSTDIR\sentinel-net.exe"
-!define MUI_FINISHPAGE_RUN_PARAMETERS "gui"
-!define MUI_FINISHPAGE_RUN_TEXT "Ouvrir la console graphique Sentinel Net"
+!define MUI_FINISHPAGE_RUN "$INSTDIR\sentinel-net-gui.exe"
+!define MUI_FINISHPAGE_RUN_TEXT "Lancer l'interface graphique Sentinel Net"
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
@@ -38,7 +40,8 @@ Section "Sentinel Net" SecMain
   SectionIn RO
   SetOutPath "$INSTDIR"
 
-  File "/oname=sentinel-net.exe" "${BIN_PATH}"
+  File "/oname=sentinel-net.exe" "${CLI_BIN}"
+  File "/oname=sentinel-net-gui.exe" "${GUI_BIN}"
   File "..\..\assets\icon.ico"
   File "..\..\README.md"
   File "..\..\LICENSE"
@@ -46,13 +49,13 @@ Section "Sentinel Net" SecMain
   WriteRegStr HKCU "Software\SentinelNet" "InstallDir" "$INSTDIR"
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
-  ; Start Menu and Desktop shortcuts
+  ; Start Menu and Desktop shortcuts point to the pure GUI Windows subsystem binary
   CreateDirectory "$SMPROGRAMS\Sentinel Net"
-  CreateShortCut "$SMPROGRAMS\Sentinel Net\Sentinel Net.lnk" "$INSTDIR\sentinel-net.exe" "gui" "$INSTDIR\icon.ico" 0
+  CreateShortCut "$SMPROGRAMS\Sentinel Net\Sentinel Net.lnk" "$INSTDIR\sentinel-net-gui.exe" "" "$INSTDIR\icon.ico" 0
   CreateShortCut "$SMPROGRAMS\Sentinel Net\Uninstall Sentinel Net.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\icon.ico" 0
-  CreateShortCut "$DESKTOP\Sentinel Net.lnk" "$INSTDIR\sentinel-net.exe" "gui" "$INSTDIR\icon.ico" 0
+  CreateShortCut "$DESKTOP\Sentinel Net.lnk" "$INSTDIR\sentinel-net-gui.exe" "" "$INSTDIR\icon.ico" 0
 
-  ; Add install folder to current user PATH if missing
+  ; Add install folder to current user PATH if missing so 'sentinel-net' works in terminal
   ReadRegStr $0 HKCU "Environment" "Path"
   StrCmp $0 "" AddFreshPath CheckExistingPath
 
@@ -89,6 +92,7 @@ Section "Uninstall"
   RMDir "$SMPROGRAMS\Sentinel Net"
 
   Delete "$INSTDIR\sentinel-net.exe"
+  Delete "$INSTDIR\sentinel-net-gui.exe"
   Delete "$INSTDIR\icon.ico"
   Delete "$INSTDIR\README.md"
   Delete "$INSTDIR\LICENSE"

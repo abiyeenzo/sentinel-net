@@ -1,5 +1,5 @@
 BINARY ?= sentinel-net
-VERSION ?= 1.0.0
+VERSION ?= 1.1.0
 LDFLAGS := -s -w -X github.com/abiyeenzo/sentinel-net/internal/cli.Version=$(VERSION)
 
 .PHONY: all build build-windows build-all icons test vet clean

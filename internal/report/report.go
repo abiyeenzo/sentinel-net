@@ -727,6 +727,135 @@ func FormatHTML(rep *scanner.Report) string {
 	)
 }
 
+// FormatNmap renders a classic Nmap-style scan transcript suitable for CLI and Zenmap console output.
+func FormatNmap(rep *scanner.Report, openOnly bool) string {
+	var b strings.Builder
+	s := rep.Summary
+	r := rep.Risk
+
+	b.WriteString(fmt.Sprintf("Starting Sentinel Net %s at %s\n", rep.Tool.Version, rep.StartedAt))
+
+	for _, h := range rep.Hosts {
+		hostHeader := h.Target
+		if h.Hostname != "" {
+			hostHeader = fmt.Sprintf("%s (%s)", h.Hostname, h.Target)
+		}
+		b.WriteString(fmt.Sprintf("\nSentinel Net scan report for %s [scope: %s]\n", hostHeader, h.Scope))
+		b.WriteString(fmt.Sprintf(
+			"Host audit summary: %d/%d open | posture %d/100 (grade %s) | %.2f ms\n",
+			h.Counts.Open, h.Counts.Total, h.Risk.Score, h.Risk.Grade, h.DurationMs,
+		))
+
+		collapseNoise := openOnly || (len(h.Observations) > 20 && h.Counts.Open > 0)
+		var shown []scanner.Observation
+		hiddenClosed := 0
+		hiddenUnknown := 0
+		for _, o := range h.Observations {
+			if collapseNoise && o.State != "open" {
+				if o.State == "closed" {
+					hiddenClosed++
+				} else {
+					hiddenUnknown++
+				}
+				continue
+			}
+			shown = append(shown, o)
+		}
+
+		if hiddenClosed > 0 || hiddenUnknown > 0 {
+			var parts []string
+			if hiddenClosed > 0 {
+				parts = append(parts, fmt.Sprintf("%d closed tcp ports", hiddenClosed))
+			}
+			if hiddenUnknown > 0 {
+				parts = append(parts, fmt.Sprintf("%d filtered/unknown tcp ports", hiddenUnknown))
+			}
+			b.WriteString(fmt.Sprintf("Not shown: %s\n", strings.Join(parts, ", ")))
+		}
+
+		if len(shown) == 0 {
+			b.WriteString(fmt.Sprintf("All %d scanned ports on %s are closed (%d) or filtered/unknown (%d).\n",
+				h.Counts.Total, h.Target, h.Counts.Closed, h.Counts.Unknown))
+			continue
+		}
+
+		b.WriteString(fmt.Sprintf(
+			"%s%s%s%s%s\n",
+			padRight("PORT", 11),
+			padRight("STATE", 10),
+			padRight("SERVICE", 18),
+			padRight("LATENCY", 11),
+			"VERSION / INSPECTION",
+		))
+		for _, o := range shown {
+			portCol := padRight(fmt.Sprintf("%d/tcp", o.Port), 11)
+			stateCol := padRight(o.State, 10)
+			svcName := o.Service.ID
+			if svcName == "" {
+				svcName = o.Service.Label
+			}
+			if svcName == "" {
+				svcName = "unknown"
+			}
+			svcCol := padRight(svcName, 18)
+			latCol := padRight(fmt.Sprintf("%.2fms", o.LatencyMs), 11)
+			b.WriteString(fmt.Sprintf("%s%s%s%s%s\n", portCol, stateCol, svcCol, latCol, summarizeObservation(o)))
+
+			if o.Inspection != nil {
+				if o.Inspection.Banner != "" {
+					b.WriteString(fmt.Sprintf("|_ banner: %s\n", o.Inspection.Banner))
+				}
+				if tlsInfo := o.Inspection.TLS; tlsInfo != nil && tlsInfo.Established {
+					cipherName := ""
+					if tlsInfo.Cipher != nil {
+						cipherName = tlsInfo.Cipher.Name
+					}
+					certLine := fmt.Sprintf("|_ ssl-cert: %s cipher=%s", tlsInfo.Protocol, cipherName)
+					if c := tlsInfo.Certificate; c != nil {
+						certLine += fmt.Sprintf(" subject=%s issuer=%s validTo=%s (%dd)",
+							c.SubjectCN, c.IssuerCN, c.ValidTo, c.DaysRemaining)
+					}
+					b.WriteString(certLine + "\n")
+				}
+				if httpInfo := o.Inspection.HTTP; httpInfo != nil && httpInfo.StatusCode > 0 {
+					hdrLine := fmt.Sprintf("|_ http-headers: status=%d", httpInfo.StatusCode)
+					if httpInfo.Server != "" {
+						hdrLine += fmt.Sprintf(" server=%q", httpInfo.Server)
+					}
+					if len(httpInfo.MissingSecurityHeaders) > 0 {
+						hdrLine += fmt.Sprintf(" missing=[%s]", strings.Join(httpInfo.MissingSecurityHeaders, ", "))
+					}
+					b.WriteString(hdrLine + "\n")
+				}
+			}
+		}
+	}
+
+	var actionable []risk.Finding
+	for _, f := range r.Findings {
+		if f.Severity != "info" {
+			actionable = append(actionable, f)
+		}
+	}
+	if len(actionable) > 0 {
+		b.WriteString(fmt.Sprintf("\nSecurity findings (%d): overall posture %d/100 (%s)\n", len(actionable), r.Score, r.Grade))
+		for _, f := range actionable {
+			portSuffix := ""
+			if f.Port > 0 {
+				portSuffix = fmt.Sprintf(":%d", f.Port)
+			}
+			b.WriteString(fmt.Sprintf("  [%s] %s (%s%s) - %s\n",
+				strings.ToUpper(f.Severity), f.RuleID, f.Host, portSuffix, f.Title))
+		}
+	}
+
+	b.WriteString(fmt.Sprintf(
+		"\nSentinel Net done: %d IP address(es) (%d active) scanned in %.2f seconds (%d probes)\n",
+		s.HostsScanned, s.HostsWithOpenPorts, s.DurationMs/1000.0, s.TotalProbes,
+	))
+	return b.String()
+}
+
 // Format dispatches report rendering by format name.
 func Format(rep *scanner.Report, opts Options) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(opts.Format)) {
@@ -734,6 +863,8 @@ func Format(rep *scanner.Report, opts Options) (string, error) {
 		return FormatJSON(rep)
 	case "table", "text":
 		return FormatTable(rep, opts.Color, opts.OpenOnly), nil
+	case "nmap":
+		return FormatNmap(rep, opts.OpenOnly), nil
 	case "sarif":
 		return FormatSARIF(rep)
 	case "markdown", "md":
@@ -743,6 +874,6 @@ func Format(rep *scanner.Report, opts Options) (string, error) {
 	case "html":
 		return FormatHTML(rep), nil
 	default:
-		return "", fmt.Errorf("unsupported format %q (expected: table, json, sarif, markdown, csv, html)", opts.Format)
+		return "", fmt.Errorf("unsupported format %q (expected: table, nmap, json, sarif, markdown, csv, html)", opts.Format)
 	}
 }

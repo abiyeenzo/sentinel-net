@@ -96,13 +96,17 @@ func main() {
 </assembly>`)
 
 	sysoAMD64 := buildCOFFResource(0x8664, 0x0003, meta, frames, manifest)
-	if err := os.WriteFile("cmd/sentinel-net/rsrc_windows_amd64.syso", sysoAMD64, 0o644); err != nil {
-		fatalf("write amd64 syso: %v", err)
-	}
-
 	sysoARM64 := buildCOFFResource(0xAA64, 0x0002, meta, frames, manifest)
-	if err := os.WriteFile("cmd/sentinel-net/rsrc_windows_arm64.syso", sysoARM64, 0o644); err != nil {
-		fatalf("write arm64 syso: %v", err)
+	for _, dir := range []string{"cmd/sentinel-net", "cmd/sentinel-net-gui"} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			fatalf("mkdir %s: %v", dir, err)
+		}
+		if err := os.WriteFile(dir+"/rsrc_windows_amd64.syso", sysoAMD64, 0o644); err != nil {
+			fatalf("write %s amd64 syso: %v", dir, err)
+		}
+		if err := os.WriteFile(dir+"/rsrc_windows_arm64.syso", sysoARM64, 0o644); err != nil {
+			fatalf("write %s arm64 syso: %v", dir, err)
+		}
 	}
 
 	fmt.Printf("Generated assets/logo.png (%d bytes), assets/icon.ico (%d bytes), and Windows .syso resources.\n",

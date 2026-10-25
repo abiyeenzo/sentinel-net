@@ -29,13 +29,17 @@ var logoSVG []byte
 
 const maxRequestBodyBytes = 2 << 20 // 2 MiB
 
-// Server hosts the local Sentinel Net HTTP audit console.
+// Server hosts the local Sentinel Net HTTP & Desktop GUI console.
 type Server struct {
-	version string
-	mu      sync.Mutex
-	active  map[string]context.CancelFunc
-	httpSrv *http.Server
-	ln      net.Listener
+	version     string
+	desktopMode bool
+	mu          sync.Mutex
+	active      map[string]context.CancelFunc
+	lastBeat    time.Time
+	doneOnce    sync.Once
+	doneCh      chan struct{}
+	httpSrv     *http.Server
+	ln          net.Listener
 }
 
 type scanRequest struct {
@@ -43,8 +47,11 @@ type scanRequest struct {
 	Target      string          `json:"target"`
 	Profile     string          `json:"profile"`
 	Ports       string          `json:"ports"`
+	MaxPorts    int             `json:"maxPorts"`
 	TimeoutMs   int             `json:"timeoutMs"`
 	Concurrency int             `json:"concurrency"`
+	Retries     int             `json:"retries"`
+	DelayMs     int             `json:"delayMs"`
 	Banner      bool            `json:"banner"`
 	TLS         bool            `json:"tls"`
 	HTTP        bool            `json:"http"`
@@ -86,6 +93,16 @@ func decodeJSONBody(r *http.Request, dst any) error {
 
 // Start binds and starts the HTTP audit console on addr (e.g. "127.0.0.1:3000").
 func Start(addr, version string) (*Server, error) {
+	return StartWithOptions(addr, version, false)
+}
+
+// StartDesktop starts the local GUI backend in desktop lifecycle mode.
+func StartDesktop(addr, version string) (*Server, error) {
+	return StartWithOptions(addr, version, true)
+}
+
+// StartWithOptions binds and starts the server with optional desktop window lifecycle management.
+func StartWithOptions(addr, version string, desktopMode bool) (*Server, error) {
 	if version == "" {
 		version = "1.0.0"
 	}
@@ -95,9 +112,12 @@ func Start(addr, version string) (*Server, error) {
 	}
 
 	s := &Server{
-		version: version,
-		active:  make(map[string]context.CancelFunc),
-		ln:      ln,
+		version:     version,
+		desktopMode: desktopMode,
+		active:      make(map[string]context.CancelFunc),
+		lastBeat:    time.Now(),
+		doneCh:      make(chan struct{}),
+		ln:          ln,
 	}
 
 	mux := http.NewServeMux()
@@ -110,6 +130,8 @@ func Start(addr, version string) (*Server, error) {
 	mux.HandleFunc("/api/scan", s.handleScan)
 	mux.HandleFunc("/api/scan/cancel", s.handleCancel)
 	mux.HandleFunc("/api/export", s.handleExport)
+	mux.HandleFunc("/api/heartbeat", s.handleHeartbeat)
+	mux.HandleFunc("/api/window-closed", s.handleWindowClosed)
 
 	s.httpSrv = &http.Server{
 		Handler:           mux,
@@ -128,8 +150,20 @@ func (s *Server) Addr() string {
 	return s.ln.Addr().String()
 }
 
+// Done closes when a desktop window session ends.
+func (s *Server) Done() <-chan struct{} {
+	return s.doneCh
+}
+
+func (s *Server) signalDone() {
+	s.doneOnce.Do(func() {
+		close(s.doneCh)
+	})
+}
+
 // Close gracefully shuts down the server and cancels any in-flight scans.
 func (s *Server) Close(ctx context.Context) error {
+	s.signalDone()
 	s.mu.Lock()
 	for id, cancel := range s.active {
 		cancel()
@@ -173,12 +207,45 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	activeCount := len(s.active)
+	s.lastBeat = time.Now()
 	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":      "ok",
 		"version":     s.version,
+		"desktopMode": s.desktopMode,
 		"activeScans": activeCount,
 	})
+}
+
+func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	s.mu.Lock()
+	s.lastBeat = time.Now()
+	s.mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleWindowClosed(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if s.desktopMode {
+		closedAt := time.Now()
+		go func() {
+			time.Sleep(2500 * time.Millisecond)
+			s.mu.Lock()
+			reconnected := s.lastBeat.After(closedAt)
+			s.mu.Unlock()
+			if !reconnected {
+				s.signalDone()
+			}
+		}()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleInterfaces(w http.ResponseWriter, r *http.Request) {
@@ -239,12 +306,14 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	}
 	if !req.Authorized {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "explicit authorization required: set authorized=true only for assets you are permitted to scan",
+			"error": "explicit authorization required: confirm authorization only for assets you are permitted to scan",
 		})
 		return
 	}
 
-	resolvedTargets, err := netscope.ResolveTargets(r.Context(), req.Target, netscope.ResolveOptions{
+	// Normalize space-separated Nmap-style target lists into comma-separated tokens
+	normTarget := strings.Join(strings.Fields(strings.ReplaceAll(req.Target, ",", " ")), ",")
+	resolvedTargets, err := netscope.ResolveTargets(r.Context(), normTarget, netscope.ResolveOptions{
 		ResolveDNS: req.ResolveDNS,
 		MaxHosts:   netscope.DefaultMaxHosts,
 	})
@@ -253,18 +322,37 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ports, err := netscope.ResolvePortSelection(req.Ports, req.Profile, netscope.DefaultMaxPorts)
+	profileName := strings.TrimSpace(req.Profile)
+	portsSpec := strings.TrimSpace(req.Ports)
+	maxPorts := req.MaxPorts
+	if portsSpec == "-" {
+		portsSpec = "1-4096"
+		if maxPorts < netscope.HardMaxPorts {
+			maxPorts = netscope.HardMaxPorts
+		}
+	}
+	if portsSpec == "" && profileName == "" {
+		profileName = "top100"
+	}
+	if maxPorts <= 0 {
+		maxPorts = netscope.DefaultMaxPorts
+		if strings.Contains(portsSpec, "-") {
+			maxPorts = netscope.HardMaxPorts
+		}
+	}
+
+	ports, err := netscope.ResolvePortSelection(portsSpec, profileName, maxPorts)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
 	timeout := time.Duration(req.TimeoutMs) * time.Millisecond
-	if timeout == 0 {
+	if timeout <= 0 {
 		timeout = 1000 * time.Millisecond
 	}
 	conc := req.Concurrency
-	if conc == 0 {
+	if conc <= 0 {
 		conc = 24
 	}
 
@@ -310,10 +398,12 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	rep, err := scanner.ScanNetwork(scanCtx, scanner.NetworkOptions{
 		Targets:     resolvedTargets,
 		Ports:       ports,
-		Profile:     req.Profile,
+		Profile:     profileName,
 		Version:     s.version,
 		Timeout:     timeout,
 		Concurrency: conc,
+		Retries:     req.Retries,
+		Delay:       time.Duration(req.DelayMs) * time.Millisecond,
 		Banner:      req.Banner,
 		TLS:         req.TLS,
 		HTTP:        req.HTTP,
@@ -337,7 +427,11 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		rep.Drift = drift
 	}
 
-	sendEvent(map[string]any{"type": "complete", "report": rep})
+	sendEvent(map[string]any{
+		"type":       "complete",
+		"report":     rep,
+		"nmapOutput": report.FormatNmap(rep, false),
+	})
 }
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
@@ -365,19 +459,26 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	contentType := "text/plain; charset=utf-8"
+	ext := "txt"
 	switch fmtName {
 	case "html":
 		contentType = "text/html; charset=utf-8"
+		ext = "html"
 	case "json":
 		contentType = "application/json; charset=utf-8"
+		ext = "json"
 	case "sarif":
 		contentType = "application/sarif+json; charset=utf-8"
+		ext = "sarif"
 	case "markdown", "md":
 		contentType = "text/markdown; charset=utf-8"
+		ext = "md"
 	case "csv":
 		contentType = "text/csv; charset=utf-8"
+		ext = "csv"
 	}
 	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", "attachment; filename=\"sentinel-net-audit."+ext+"\"")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(rendered))
