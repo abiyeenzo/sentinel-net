@@ -61,7 +61,8 @@ USAGE:
   %s interfaces [--json]
   %s profiles [--json]
   %s diff <baseline.json> <courant.json> [--format <json|table|markdown>] [--fail-on-drift]
-  %s serve [--host 127.0.0.1] [--port 3000]
+  %s serve [--host 127.0.0.1] [--port 3000] [--open]
+  %s gui
 
 COMMANDES:
   scan          Audit d'exposition TCP/TLS/HTTP borne (commande par defaut)
@@ -69,6 +70,7 @@ COMMANDES:
   profiles      Liste les profils de ports integres (quick, web, infra, database, containers, iot, top100)
   diff          Compare deux fichiers JSON de scan et affiche les derives
   serve (ui)    Demarre la console Web locale d'audit
+  gui           Demarre la console Web locale et ouvre le navigateur par defaut
 
 OPTIONS DE CIBLAGE ET PORTS:
   --target, -t <cibles>       IP litterale (IPv4/IPv6), CIDR (/22-/32) ou plage (ex: 192.168.1.1-50)
@@ -110,7 +112,7 @@ EXEMPLES:
   %s scan -t 192.168.1.0/24 -p 22,80,443,3389 --tls --http --authorized --report-html audit.html
   %s scan -t 10.0.0.5 --profile database --authorized --format sarif -o findings.sarif
   %s serve --port 3000
-`, Version, bin, bin, bin, bin, bin, bin, bin, bin, bin)
+`, Version, bin, bin, bin, bin, bin, bin, bin, bin, bin, bin)
 }
 
 var valueFlags = map[string]string{
@@ -151,6 +153,7 @@ var boolFlags = map[string]string{
 	"--open-only":     "open-only",
 	"--fail-on-drift": "fail-on-drift",
 	"--no-color":      "no-color",
+	"--open":          "open",
 	"--quiet":         "quiet",
 	"-q":              "quiet",
 	"--help":          "help",
@@ -276,7 +279,11 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 	}
 
 	if len(argv) == 0 {
-		return 2, fmt.Errorf("explicit target and authorization required (run %q --help for usage)", bin)
+		if isStandaloneDesktopLaunch(ioCfg) {
+			argv = []string{"gui"}
+		} else {
+			return 2, fmt.Errorf("explicit target and authorization required (run %q --help for usage)", bin)
+		}
 	}
 
 	vals, bools, pos, err := parseArgs(argv)
@@ -374,7 +381,7 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 		}
 		return 0, nil
 
-	case "serve", "ui":
+	case "serve", "ui", "gui":
 		host := vals["host"]
 		if host == "" {
 			host = os.Getenv("HOST")
@@ -382,6 +389,7 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 		if host == "" {
 			host = "127.0.0.1"
 		}
+		explicitPort := false
 		portNum := 3000
 		if vals["port"] != "" {
 			p, err := strconv.Atoi(vals["port"])
@@ -389,17 +397,33 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 				return 2, fmt.Errorf("invalid --port value %q", vals["port"])
 			}
 			portNum = p
+			explicitPort = true
 		} else if envPort := os.Getenv("PORT"); envPort != "" {
 			if p, err := strconv.Atoi(envPort); err == nil && p >= 0 && p <= 65535 {
 				portNum = p
+				explicitPort = true
 			}
 		}
+		autoOpen := sub == "gui" || bools["open"]
 		listenAddr := net.JoinHostPort(host, strconv.Itoa(portNum))
 		srv, err := web.Start(listenAddr, Version)
+		if err != nil && autoOpen && !explicitPort {
+			srv, err = web.Start(net.JoinHostPort(host, "0"), Version)
+		}
 		if err != nil {
 			return 2, err
 		}
+		_, actualPort, _ := net.SplitHostPort(srv.Addr())
+		browseHost := host
+		if browseHost == "" || browseHost == "0.0.0.0" || browseHost == "::" {
+			browseHost = "127.0.0.1"
+		}
+		consoleURL := "http://" + net.JoinHostPort(browseHost, actualPort)
 		_, _ = fmt.Fprintf(ioCfg.Stdout, "Sentinel Net v%s web console listening on http://%s\n", Version, srv.Addr())
+		if autoOpen {
+			_, _ = fmt.Fprintf(ioCfg.Stdout, "Ouverture automatique dans le navigateur : %s (Ctrl+C pour quitter)\n", consoleURL)
+			_ = openBrowser(consoleURL)
+		}
 		<-ctx.Done()
 		shutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -409,7 +433,7 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 	case "scan":
 		// Handled below
 	default:
-		return 2, fmt.Errorf("unknown command %q (expected: scan, interfaces, profiles, diff, serve)", pos[0])
+		return 2, fmt.Errorf("unknown command %q (expected: scan, interfaces, profiles, diff, serve, gui)", pos[0])
 	}
 
 	if !bools["authorized"] {

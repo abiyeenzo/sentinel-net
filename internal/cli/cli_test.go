@@ -166,6 +166,16 @@ func TestWebConsoleServerEndpoints(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 
+	// Embedded SVG logo
+	logoResp, err := http.Get(baseURL + "/logo.svg")
+	if err != nil || logoResp.StatusCode != 200 {
+		t.Fatalf("GET /logo.svg failed: %v", err)
+	}
+	if !strings.Contains(logoResp.Header.Get("Content-Type"), "image/svg+xml") {
+		t.Fatalf("unexpected logo content-type: %s", logoResp.Header.Get("Content-Type"))
+	}
+	_ = logoResp.Body.Close()
+
 	// Unauthorized scan returns 400
 	unauthResp, err := http.Post(baseURL+"/api/scan", "application/json",
 		strings.NewReader(`{"authorized":false,"target":"127.0.0.1","ports":"80"}`))

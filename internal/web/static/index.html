@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" type="image/svg+xml" href="/logo.svg" />
 <title>Sentinel Net - Console d'Audit Reseau</title>
 <style>
   :root {
@@ -136,9 +137,12 @@
 </head>
 <body>
 <header class="topbar">
-  <div>
-    <div class="brand">SENTINEL <span>NET</span> <small class="mono" id="verTag"></small></div>
-    <div class="subtitle">Audit defensif d'exposition TCP / TLS / HTTP et suivi de baseline</div>
+  <div style="display:flex;align-items:center;gap:0.75rem;">
+    <img src="/logo.svg" alt="Sentinel Net" width="38" height="38" style="border-radius:8px;flex-shrink:0;" />
+    <div>
+      <div class="brand">SENTINEL <span>NET</span> <small class="mono" id="verTag"></small></div>
+      <div class="subtitle">Audit defensif d'exposition TCP / TLS / HTTP et suivi de baseline</div>
+    </div>
   </div>
   <div class="status-tag mono">Moteur Go natif actif</div>
 </header>

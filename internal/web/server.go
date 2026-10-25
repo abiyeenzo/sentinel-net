@@ -24,6 +24,9 @@ import (
 //go:embed static/index.html
 var dashboardHTML []byte
 
+//go:embed static/logo.svg
+var logoSVG []byte
+
 const maxRequestBodyBytes = 2 << 20 // 2 MiB
 
 // Server hosts the local Sentinel Net HTTP audit console.
@@ -99,6 +102,8 @@ func Start(addr, version string) (*Server, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
+	mux.HandleFunc("/logo.svg", s.handleLogo)
+	mux.HandleFunc("/favicon.ico", s.handleLogo)
 	mux.HandleFunc("/api/health", s.handleHealth)
 	mux.HandleFunc("/api/interfaces", s.handleInterfaces)
 	mux.HandleFunc("/api/profiles", s.handleProfiles)
@@ -145,6 +150,20 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(dashboardHTML)
+}
+
+func (s *Server) handleLogo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	if r.Method == http.MethodGet {
+		_, _ = w.Write(logoSVG)
+	}
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

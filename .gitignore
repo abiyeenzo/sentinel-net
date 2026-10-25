@@ -3,10 +3,15 @@
 /dist/
 /build/
 /out/
+/release-assets/
+/Unselected files/
 /sentinel-net
 /sentinel-net.exe
 *.exe
 *.zip
+*.deb
+*.dmg
+*.tar.gz
 
 # Go test and coverage artifacts
 *.test

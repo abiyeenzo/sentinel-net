@@ -1,0 +1,335 @@
+name: Build & Package Multi-OS Executables
+
+on:
+  push:
+    branches: ["main", "arena/**"]
+    tags: ["v*"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Windows (.exe & Setup Installer)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.24.x'
+
+      - name: Build Windows executables (amd64 & arm64 with embedded icon)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+
+          $version = "1.0.0"
+          if ($env:GITHUB_REF_NAME -match "^v(\d+\.\d+\.\d+.*)") {
+            $version = $Matches[1]
+          }
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+
+          $env:GOARCH = "amd64"
+          go build -trimpath -ldflags="-s -w -X github.com/abiyeenzo/sentinel-net/internal/cli.Version=$version" -o dist\sentinel-net-windows-amd64.exe .\cmd\sentinel-net
+          if ($LASTEXITCODE -ne 0) { throw "go build windows/amd64 failed" }
+
+          $env:GOARCH = "arm64"
+          go build -trimpath -ldflags="-s -w -X github.com/abiyeenzo/sentinel-net/internal/cli.Version=$version" -o dist\sentinel-net-windows-arm64.exe .\cmd\sentinel-net
+          if ($LASTEXITCODE -ne 0) { throw "go build windows/arm64 failed" }
+
+      - name: Smoke test Windows amd64 executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+            $PSNativeCommandUseErrorActionPreference = $false
+          }
+          $exe = Join-Path $PWD "dist\sentinel-net-windows-amd64.exe"
+
+          $ver = (& $exe --version) -join "`n"
+          if ($LASTEXITCODE -ne 0 -or $ver -notmatch "sentinel-net v") {
+            throw "Unexpected --version output: $ver"
+          }
+
+          $null = (& $exe --target 127.0.0.1 --ports 80 2>&1) -join "`n"
+          if ($LASTEXITCODE -ne 2) {
+            throw "Expected exit code 2 without --authorized, got $LASTEXITCODE"
+          }
+
+          $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+          $listener.Start()
+          try {
+            $port = ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
+            $jsonRaw = (& $exe scan --target 127.0.0.1 --ports "$port" --authorized --format json) -join "`n"
+            if ($LASTEXITCODE -ne 0) { throw "Live loopback scan failed: $jsonRaw" }
+            $parsed = $jsonRaw | ConvertFrom-Json
+            if ($parsed.summary.openPorts -ne 1) { throw "Expected 1 open port, got: $jsonRaw" }
+          } finally {
+            $listener.Stop()
+          }
+
+      - name: Package portable ZIPs and NSIS graphical installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          foreach ($arch in @("amd64", "arm64")) {
+            $stage = "dist\pkg-win-$arch"
+            New-Item -ItemType Directory -Force -Path $stage | Out-Null
+            Copy-Item "dist\sentinel-net-windows-$arch.exe" "$stage\sentinel-net.exe"
+            Copy-Item README.md "$stage\README.md"
+            Copy-Item LICENSE "$stage\LICENSE"
+            Compress-Archive -Path "$stage\*" -DestinationPath "dist\sentinel-net-windows-$arch.zip" -Force
+            Remove-Item -Recurse -Force $stage
+          }
+
+          $nsis = Get-Command makensis -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+          if (-not $nsis -and (Test-Path "C:\Program Files (x86)\NSIS\makensis.exe")) {
+            $nsis = "C:\Program Files (x86)\NSIS\makensis.exe"
+          }
+          if (-not $nsis) {
+            choco install nsis -y --no-progress
+            $nsis = "C:\Program Files (x86)\NSIS\makensis.exe"
+          }
+          & $nsis "/DVERSION=$($env:VERSION)" "packaging\windows\installer.nsi"
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path "dist\sentinel-net-setup-windows-amd64.exe")) {
+            throw "NSIS setup installer compilation failed"
+          }
+
+      - name: Upload Windows stage artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: stage-windows
+          path: |
+            dist/sentinel-net-windows-amd64.exe
+            dist/sentinel-net-windows-arm64.exe
+            dist/sentinel-net-setup-windows-amd64.exe
+            dist/sentinel-net-windows-amd64.zip
+            dist/sentinel-net-windows-arm64.zip
+          if-no-files-found: error
+
+  linux:
+    name: Linux (Static Binaries & .deb Packages)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.24.x'
+
+      - name: Build static Linux binaries and .deb packages (amd64 & arm64)
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          VERSION="1.0.0"
+          if [[ "${GITHUB_REF_NAME}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+.*) ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+          fi
+
+          for ARCH in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH="${ARCH}" \
+              go build -trimpath -ldflags="-s -w -X github.com/abiyeenzo/sentinel-net/internal/cli.Version=${VERSION}" \
+              -o "dist/sentinel-net-linux-${ARCH}" ./cmd/sentinel-net
+            chmod 0755 "dist/sentinel-net-linux-${ARCH}"
+
+            STAGE_TAR="$(mktemp -d)"
+            cp "dist/sentinel-net-linux-${ARCH}" "${STAGE_TAR}/sentinel-net"
+            cp README.md LICENSE "${STAGE_TAR}/"
+            tar -C "${STAGE_TAR}" -czf "dist/sentinel-net-linux-${ARCH}.tar.gz" sentinel-net README.md LICENSE
+            rm -rf "${STAGE_TAR}"
+
+            DEB_ROOT="$(mktemp -d)/sentinel-net_${VERSION}_${ARCH}"
+            mkdir -p \
+              "${DEB_ROOT}/DEBIAN" \
+              "${DEB_ROOT}/usr/bin" \
+              "${DEB_ROOT}/usr/share/applications" \
+              "${DEB_ROOT}/usr/share/icons/hicolor/scalable/apps" \
+              "${DEB_ROOT}/usr/share/icons/hicolor/512x512/apps" \
+              "${DEB_ROOT}/usr/share/doc/sentinel-net"
+
+            install -m 0755 "dist/sentinel-net-linux-${ARCH}" "${DEB_ROOT}/usr/bin/sentinel-net"
+            install -m 0644 packaging/linux/sentinel-net.desktop "${DEB_ROOT}/usr/share/applications/sentinel-net.desktop"
+            install -m 0644 assets/logo.svg "${DEB_ROOT}/usr/share/icons/hicolor/scalable/apps/sentinel-net.svg"
+            install -m 0644 assets/logo.png "${DEB_ROOT}/usr/share/icons/hicolor/512x512/apps/sentinel-net.png"
+            install -m 0644 LICENSE "${DEB_ROOT}/usr/share/doc/sentinel-net/copyright"
+
+            cat > "${DEB_ROOT}/DEBIAN/control" <<EOF
+          Package: sentinel-net
+          Version: ${VERSION}
+          Section: net
+          Priority: optional
+          Architecture: ${ARCH}
+          Maintainer: Sentinel Net Maintainers <noreply@github.com>
+          Homepage: https://github.com/abiyeenzo/sentinel-net
+          Description: Scanner defensif d'audit d'exposition reseau TCP, TLS et HTTP
+           Outil autonome compile en Go sans dependance externe, incluant une console
+           Web locale, des profils de ports et un suivi d'integrite SHA-256.
+          EOF
+            sed -i 's/^          //' "${DEB_ROOT}/DEBIAN/control"
+            chmod 0755 "${DEB_ROOT}/DEBIAN"
+
+            dpkg-deb --build --root-owner-group "${DEB_ROOT}" "dist/sentinel-net_${VERSION}_${ARCH}.deb"
+            dpkg-deb --info "dist/sentinel-net_${VERSION}_${ARCH}.deb"
+          done
+
+      - name: Smoke test Linux amd64 binary
+        run: |
+          set -euo pipefail
+          ./dist/sentinel-net-linux-amd64 --version
+          if ./dist/sentinel-net-linux-amd64 --target 127.0.0.1 --ports 80 2>/dev/null; then
+            echo "Expected exit 2 without --authorized" >&2
+            exit 1
+          fi
+          ./dist/sentinel-net-linux-amd64 scan --target 127.0.0.1 --ports 22,80 --authorized --format json >/dev/null
+
+      - name: Upload Linux stage artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: stage-linux
+          path: |
+            dist/sentinel-net-linux-amd64
+            dist/sentinel-net-linux-arm64
+            dist/sentinel-net-linux-*.tar.gz
+            dist/sentinel-net_*.deb
+          if-no-files-found: error
+
+  macos:
+    name: macOS (Universal .dmg App & Binaries)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.24.x'
+
+      - name: Build macOS binaries and Universal .dmg Application Bundle
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          VERSION="1.0.0"
+          if [[ "${GITHUB_REF_NAME}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+.*) ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+          fi
+
+          for ARCH in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=darwin GOARCH="${ARCH}" \
+              go build -trimpath -ldflags="-s -w -X github.com/abiyeenzo/sentinel-net/internal/cli.Version=${VERSION}" \
+              -o "dist/sentinel-net-darwin-${ARCH}" ./cmd/sentinel-net
+            chmod 0755 "dist/sentinel-net-darwin-${ARCH}"
+
+            STAGE_TAR="$(mktemp -d)"
+            cp "dist/sentinel-net-darwin-${ARCH}" "${STAGE_TAR}/sentinel-net"
+            cp README.md LICENSE "${STAGE_TAR}/"
+            tar -C "${STAGE_TAR}" -czf "dist/sentinel-net-darwin-${ARCH}.tar.gz" sentinel-net README.md LICENSE
+            rm -rf "${STAGE_TAR}"
+          done
+
+          WORK_DIR="$(mktemp -d)"
+          UNIV_BIN="${WORK_DIR}/sentinel-net"
+          lipo -create -output "${UNIV_BIN}" dist/sentinel-net-darwin-amd64 dist/sentinel-net-darwin-arm64
+          chmod 0755 "${UNIV_BIN}"
+
+          # Native smoke test on macOS runner
+          "${UNIV_BIN}" --version
+          "${UNIV_BIN}" scan --target 127.0.0.1 --ports 80 --authorized --format json >/dev/null
+
+          # Build .icns icon from assets/logo.png
+          ICONSET="${WORK_DIR}/SentinelNet.iconset"
+          mkdir -p "${ICONSET}"
+          sips -z 16 16     assets/logo.png --out "${ICONSET}/icon_16x16.png" >/dev/null
+          sips -z 32 32     assets/logo.png --out "${ICONSET}/icon_16x16@2x.png" >/dev/null
+          sips -z 32 32     assets/logo.png --out "${ICONSET}/icon_32x32.png" >/dev/null
+          sips -z 64 64     assets/logo.png --out "${ICONSET}/icon_32x32@2x.png" >/dev/null
+          sips -z 128 128   assets/logo.png --out "${ICONSET}/icon_128x128.png" >/dev/null
+          sips -z 256 256   assets/logo.png --out "${ICONSET}/icon_128x128@2x.png" >/dev/null
+          sips -z 256 256   assets/logo.png --out "${ICONSET}/icon_256x256.png" >/dev/null
+          sips -z 512 512   assets/logo.png --out "${ICONSET}/icon_256x256@2x.png" >/dev/null
+          cp assets/logo.png "${ICONSET}/icon_512x512.png"
+          iconutil -c icns "${ICONSET}" -o "${WORK_DIR}/icon.icns"
+
+          # Assemble Sentinel Net.app bundle
+          DMG_STAGE="${WORK_DIR}/dmg"
+          APP_DIR="${DMG_STAGE}/Sentinel Net.app"
+          mkdir -p "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources"
+          cp "${UNIV_BIN}" "${APP_DIR}/Contents/MacOS/sentinel-net"
+          cat > "${APP_DIR}/Contents/MacOS/sentinel-net-app" <<'LAUNCHER'
+          #!/bin/sh
+          DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+          exec "${DIR}/sentinel-net" gui
+          LAUNCHER
+          sed -i '' 's/^          //' "${APP_DIR}/Contents/MacOS/sentinel-net-app"
+          chmod 0755 "${APP_DIR}/Contents/MacOS/sentinel-net-app"
+          sed "s/__VERSION__/${VERSION}/g" packaging/macos/Info.plist > "${APP_DIR}/Contents/Info.plist"
+          cp "${WORK_DIR}/icon.icns" "${APP_DIR}/Contents/Resources/icon.icns"
+
+          codesign --force --deep --sign - "${APP_DIR}"
+          ln -s /Applications "${DMG_STAGE}/Applications"
+
+          hdiutil create -volname "Sentinel Net" -srcfolder "${DMG_STAGE}" -ov -format UDZO "dist/Sentinel-Net-macOS-universal.dmg"
+          rm -rf "${WORK_DIR}"
+
+      - name: Upload macOS stage artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: stage-macos
+          path: |
+            dist/sentinel-net-darwin-amd64
+            dist/sentinel-net-darwin-arm64
+            dist/sentinel-net-darwin-*.tar.gz
+            dist/Sentinel-Net-macOS-universal.dmg
+          if-no-files-found: error
+
+  publish:
+    name: Checksums & Release Bundle
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: stage-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate unified SHA256SUMS.txt
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum * | sort -k2 > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload complete multi-OS release bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: sentinel-net-multi-os-packages
+          path: release-assets/*
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish GitHub Release on version tags
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: release-assets/*
+          generate_release_notes: true
