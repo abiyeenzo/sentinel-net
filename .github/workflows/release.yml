@@ -52,29 +52,29 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $exe = ".\dist\sentinel-net-windows-amd64.exe"
+          if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+            $PSNativeCommandUseErrorActionPreference = $false
+          }
+          $exe = Join-Path $PWD "dist\sentinel-net-windows-amd64.exe"
 
-          $ver = & $exe --version
-          if ($LASTEXITCODE -ne 0 -or $ver -notmatch "sentinel-net") {
+          $ver = (& $exe --version) -join "`n"
+          if ($LASTEXITCODE -ne 0 -or $ver -notmatch "sentinel-net v") {
             throw "Unexpected --version output: $ver"
           }
 
-          $ErrorActionPreference = "Continue"
-          $null = & $exe --target 127.0.0.1 --ports 80 2>&1
-          $unauthCode = $LASTEXITCODE
-          $ErrorActionPreference = "Stop"
-          if ($unauthCode -ne 2) {
-            throw "Expected exit code 2 without --authorized, got $unauthCode"
+          $null = (& $exe --target 127.0.0.1 --ports 80 2>&1) -join "`n"
+          if ($LASTEXITCODE -ne 2) {
+            throw "Expected exit code 2 without --authorized, got $LASTEXITCODE"
           }
 
           $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
           $listener.Start()
           try {
             $port = ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
-            $jsonRaw = & $exe scan --target 127.0.0.1 --ports "$port" --authorized --format json
-            if ($LASTEXITCODE -ne 0) { throw "Live loopback scan failed" }
+            $jsonRaw = (& $exe scan --target 127.0.0.1 --ports "$port" --authorized --format json) -join "`n"
+            if ($LASTEXITCODE -ne 0) { throw "Live loopback scan failed: $jsonRaw" }
             $parsed = $jsonRaw | ConvertFrom-Json
-            if ($parsed.summary.open -ne 1) { throw "Expected 1 open port" }
+            if ($parsed.summary.openPorts -ne 1) { throw "Expected 1 open port, got: $jsonRaw" }
           } finally {
             $listener.Stop()
           }
