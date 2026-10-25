@@ -18,6 +18,7 @@ import (
 
 	"github.com/abiyeenzo/sentinel-net/internal/baseline"
 	"github.com/abiyeenzo/sentinel-net/internal/netscope"
+	"github.com/abiyeenzo/sentinel-net/internal/osint"
 	"github.com/abiyeenzo/sentinel-net/internal/profiles"
 	"github.com/abiyeenzo/sentinel-net/internal/report"
 	"github.com/abiyeenzo/sentinel-net/internal/scanner"
@@ -25,7 +26,7 @@ import (
 )
 
 // Version is set at compile time via -ldflags "-X github.com/abiyeenzo/sentinel-net/internal/cli.Version=...".
-var Version = "1.1.0"
+var Version = "1.2.0"
 
 // IO encapsulates CLI streams and terminal capabilities for clean testing.
 type IO struct {
@@ -54,10 +55,11 @@ func DefaultIO() IO {
 }
 
 func helpText(bin string) string {
-	return fmt.Sprintf(`Sentinel Net v%s - Scanner d'audit reseau defensif (CLI style Nmap + Interface Graphique)
+	return fmt.Sprintf(`Sentinel Net v%s - Audit reseau defensif, correlation CVE et reconnaissance OSINT
 
 USAGE:
   %s [options] <cible1> [cible2 ...] -y
+  %s osint <domaine-ou-ip> [--web -y] [-f table|json|markdown] [-o fichier]
   %s gui
   %s interfaces [--json]
   %s profiles [--json]
@@ -65,27 +67,34 @@ USAGE:
   %s serve [--host 127.0.0.1] [--port 3000]
 
 RACCOURCIS RAPIDES (STYLE NMAP):
-  <cible>                     IP (192.168.1.1, ::1), CIDR (192.168.1.0/24) ou plage (10.0.0.1-50)
-  -y, --authorized            Confirme l'autorisation explicite d'auditer les cibles (OBLIGATOIRE)
+  <cible>                     IP (192.168.1.1, ::1), CIDR (192.168.1.0/24), plage ou nom d'hote (-R)
+  -y, --authorized            Confirme l'autorisation explicite d'auditer les cibles (OBLIGATOIRE en scan actif)
   -F                          Scan rapide (profil quick : 18 ports critiques)
   -p <ports>                  Ports ou plages (ex: -p 22,80,443,8000-8050) ou -p- (ports 1-4096)
   --top-ports <N>             Scanne les N ports les plus courants (1 a 95)
   -P, --profile <nom>         Profil metier : quick | web | infra | database | containers | iot | top100
-  -sV, --banner               Detection passive des services et bannieres TCP
+  -sV, --banner               Detection passive des services, versions et bannieres TCP
   -sC                         Audit non-intrusif des certificats TLS X.509 et en-tetes HTTP
-  -A, -i, --inspect           Audit complet tout-en-un : banniere (-sV) + TLS + HTTP
+  --vuln, --script=vuln       Correlation CVE passive avec scope de versions affectees et liens NVD/CVE.org
+  --cve-online                Enrichissement CVE temps reel via l'API officielle NIST NVD v2.0 (CPE)
+  --osint                     Enrichir le scan avec la reconnaissance OSINT (DNS, SPF/DMARC, CT crt.sh, RDAP, ASN)
+  -A, -i, --inspect           Audit complet tout-en-un : versions (-sV) + TLS + HTTP + correlation CVE
   -T1 .. -T5                  Cadence d'execution : -T1 prudent, -T2 poli, -T3 normal, -T4 rapide, -T5 turbo
   -iL, --targets-file <f>     Lire la liste des cibles depuis un fichier texte
   -R, --resolve               Activer la resolution DNS des noms d'hotes (-n pour desactiver)
   --open                      Afficher uniquement les ports ouverts (alias --open-only)
   --nmap                      Afficher la sortie console au format classique Nmap
 
+RECONNAISSANCE OSINT DEDIEE:
+  %s osint <cible>            Collecte passive DNS (A/AAAA/MX/NS/TXT/SPF/DMARC), CT (crt.sh), RDAP et Geo/ASN
+  --web                       Inspecter en plus /.well-known/security.txt, /robots.txt et technologies Web (requiert -y)
+
 SORTIES ET RAPPORTS:
-  -oN <fichier>               Enregistrer le rapport texte style Nmap
+  -oN <fichier>               Enregistrer le rapport texte style Nmap (inclut |_ vulns: et liens CVE)
   -oJ <fichier>               Enregistrer le rapport JSON structure
-  -oS <fichier>               Enregistrer le rapport SARIF 2.1.0
+  -oS <fichier>               Enregistrer le rapport SARIF 2.1.0 (regles de posture + CVE)
   -oM <fichier>               Enregistrer le rapport Markdown
-  -oH, --report-html <f>      Generer un rapport HTML visuel autonome
+  -oH, --report-html <f>      Generer un rapport HTML visuel autonome avec liens CVE cliquables
   -oA <prefixe>               Generer d'un coup <prefixe>.txt, .json, .html et .sarif
   -f, --format <fmt>          Format stdout : table | nmap | json | sarif | markdown | csv | html
   -o, --output <fichier>      Ecrire la sortie principale dans un fichier
@@ -94,7 +103,7 @@ SUIVI DE DERIVE (BASELINE) ET REGLES CI:
   --save-baseline <fichier>   Enregistrer un snapshot signe SHA-256
   --compare <fichier>         Comparer le scan courant avec une baseline existante
   --fail-on-drift             Retourner le code 3 si l'exposition a change
-  --fail-on-severity <niv>    Retourner le code 3 si constat >= critical | high | medium | low
+  --fail-on-severity <niv>    Retourner le code 3 si constat ou CVE >= critical | high | medium | low
 
 REGLAGES MOTEUR AVANCES:
   --timeout <100-15000>       Timeout par sonde en ms (defaut: 1000)
@@ -110,11 +119,11 @@ REGLAGES MOTEUR AVANCES:
 
 EXEMPLES SIMPLES:
   %s gui
-  %s -F 127.0.0.1 -y
-  %s -A 192.168.1.1 -y
-  %s -F -T4 192.168.1.0/24 --open -y
-  %s -sV -p 22,80,443,3306,5432 10.0.0.5 -oA audit-prod -y
-`, Version, bin, bin, bin, bin, bin, bin, bin, bin, bin, bin, bin)
+  %s -F --vuln 127.0.0.1 -y
+  %s osint exemple.com
+  %s -A --osint -R exemple.com -y
+  %s -sV --script=vuln -p 22,80,443,3306,5432 10.0.0.5 -oA audit-prod -y
+`, Version, bin, bin, bin, bin, bin, bin, bin, bin, bin, bin, bin, bin, bin)
 }
 
 var valueFlags = map[string]string{
@@ -150,6 +159,7 @@ var valueFlags = map[string]string{
 	"--save-baseline":    "save-baseline",
 	"--compare":          "compare",
 	"--fail-on-severity": "fail-on-severity",
+	"--script":           "script",
 	"--host":             "host",
 	"--port":             "port",
 }
@@ -171,6 +181,11 @@ var boolFlags = map[string]string{
 	"-sC":             "scripts",
 	"--tls":           "tls",
 	"--http":          "http",
+	"--vuln":          "vuln",
+	"--cve":           "vuln",
+	"--cve-online":    "cve-online",
+	"--osint":         "osint",
+	"--web":           "web",
 	"--json":          "json",
 	"--nmap":          "nmap-fmt",
 	"--open":          "open",
@@ -323,8 +338,13 @@ func checkPolicyGate(rep *scanner.Report, failSeverity string, failOnDrift bool)
 				matched++
 			}
 		}
+		for _, v := range rep.Vulnerabilities {
+			if severityRank(v.Severity) >= rank {
+				matched++
+			}
+		}
 		if matched > 0 {
-			return fmt.Sprintf("%d finding(s) met or exceeded severity %q", matched, failSeverity), nil
+			return fmt.Sprintf("%d finding(s)/CVE(s) met or exceeded severity %q", matched, failSeverity), nil
 		}
 	}
 	return "", nil
@@ -386,6 +406,9 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 		case "scan":
 			sub = "scan"
 			posTargets = pos[1:]
+		case "osint", "recon":
+			sub = "osint"
+			posTargets = pos[1:]
 		case "interfaces", "profiles", "diff", "serve", "ui", "gui":
 			sub = cand
 		default:
@@ -393,7 +416,7 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 				sub = "scan"
 				posTargets = pos
 			} else {
-				return 2, fmt.Errorf("unknown command %q (expected target IP/CIDR or command: scan, gui, interfaces, profiles, diff, serve)", pos[0])
+				return 2, fmt.Errorf("unknown command %q (expected target IP/CIDR or command: scan, osint, gui, interfaces, profiles, diff, serve)", pos[0])
 			}
 		}
 	}
@@ -401,6 +424,54 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 	useColor := ioCfg.StdoutTTY && !bools["no-color"] && os.Getenv("NO_COLOR") == ""
 
 	switch sub {
+	case "osint":
+		target := vals["target"]
+		if target == "" && len(posTargets) > 0 {
+			target = posTargets[0]
+		}
+		if target == "" {
+			return 2, fmt.Errorf("usage: %s osint <domaine-ou-ip> [--web -y] [-f table|json|markdown]", bin)
+		}
+		if bools["web"] && !bools["authorized"] && target != "127.0.0.1" && target != "::1" && !strings.EqualFold(target, "localhost") {
+			return 2, errors.New("option --web connects directly to the target web server: pass -y (--authorized) to confirm permission")
+		}
+		timeoutMs, err := parseIntOpt(vals, "timeout", 6000)
+		if err != nil {
+			return 2, err
+		}
+		oRep, err := osint.Run(ctx, target, osint.Options{
+			Timeout:   time.Duration(timeoutMs) * time.Millisecond,
+			ActiveWeb: bools["web"],
+		})
+		if err != nil {
+			return 2, err
+		}
+		fmtName := vals["format"]
+		if bools["json"] {
+			fmtName = "json"
+		} else if fmtName == "" {
+			if ioCfg.StdoutTTY {
+				fmtName = "table"
+			} else {
+				fmtName = "json"
+			}
+		}
+		rendered, err := report.FormatOSINT(oRep, report.Options{
+			Format: fmtName,
+			Color:  useColor,
+		})
+		if err != nil {
+			return 2, err
+		}
+		if vals["output"] != "" {
+			if err := os.WriteFile(vals["output"], []byte(rendered), 0o644); err != nil {
+				return 2, err
+			}
+		} else {
+			_, _ = io.WriteString(ioCfg.Stdout, rendered)
+		}
+		return 0, nil
+
 	case "interfaces":
 		ifaces, err := netscope.ListLocalInterfaces()
 		if err != nil {
@@ -624,7 +695,13 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 		return 2, err
 	}
 
-	enableDNS := bools["resolve"] && !bools["no-resolve"]
+	scriptSpec := strings.ToLower(vals["script"])
+	enableVuln := bools["vuln"] || bools["cve-online"] || strings.Contains(scriptSpec, "vuln") || strings.Contains(scriptSpec, "cve") || strings.Contains(scriptSpec, "default")
+	enableOSINT := bools["osint"] || strings.Contains(scriptSpec, "osint") || strings.Contains(scriptSpec, "asn") || strings.Contains(scriptSpec, "whois")
+	enableTLS := bools["tls"] || bools["scripts"] || strings.Contains(scriptSpec, "default") || strings.Contains(scriptSpec, "ssl")
+	enableHTTP := bools["http"] || bools["scripts"] || strings.Contains(scriptSpec, "default") || strings.Contains(scriptSpec, "http")
+
+	enableDNS := (bools["resolve"] || enableOSINT) && !bools["no-resolve"]
 	resolvedTargets, err := netscope.ResolveTargets(ctx, strings.Join(targetTokens, ","), netscope.ResolveOptions{
 		ResolveDNS: enableDNS,
 		MaxHosts:   maxHosts,
@@ -659,9 +736,6 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 		return 2, err
 	}
 
-	enableTLS := bools["tls"] || bools["scripts"]
-	enableHTTP := bools["http"] || bools["scripts"]
-
 	showProgress := (ioCfg.StderrTTY || bools["v-flag"]) && !bools["quiet"]
 	var progressCb func(scanner.ProgressEvent)
 	if showProgress && ioCfg.StderrTTY {
@@ -684,6 +758,9 @@ func runInner(parentCtx context.Context, argv []string, ioCfg IO) (int, error) {
 		Banner:      bools["banner"],
 		TLS:         enableTLS,
 		HTTP:        enableHTTP,
+		Vuln:        enableVuln,
+		CVEOnline:   bools["cve-online"],
+		OSINT:       enableOSINT,
 		OnProgress:  progressCb,
 	})
 	if showProgress && ioCfg.StderrTTY {

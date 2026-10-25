@@ -16,6 +16,7 @@ import (
 
 	"github.com/abiyeenzo/sentinel-net/internal/baseline"
 	"github.com/abiyeenzo/sentinel-net/internal/netscope"
+	"github.com/abiyeenzo/sentinel-net/internal/osint"
 	"github.com/abiyeenzo/sentinel-net/internal/profiles"
 	"github.com/abiyeenzo/sentinel-net/internal/report"
 	"github.com/abiyeenzo/sentinel-net/internal/scanner"
@@ -55,8 +56,18 @@ type scanRequest struct {
 	Banner      bool            `json:"banner"`
 	TLS         bool            `json:"tls"`
 	HTTP        bool            `json:"http"`
+	Vuln        bool            `json:"vuln"`
+	CVEOnline   bool            `json:"cveOnline"`
+	OSINT       bool            `json:"osint"`
 	ResolveDNS  bool            `json:"resolveDns"`
 	Baseline    *scanner.Report `json:"baseline"`
+}
+
+type osintRequest struct {
+	Query      string `json:"query"`
+	ActiveWeb  bool   `json:"activeWeb"`
+	Authorized bool   `json:"authorized"`
+	TimeoutMs  int    `json:"timeoutMs"`
 }
 
 type cancelRequest struct {
@@ -129,6 +140,7 @@ func StartWithOptions(addr, version string, desktopMode bool) (*Server, error) {
 	mux.HandleFunc("/api/profiles", s.handleProfiles)
 	mux.HandleFunc("/api/scan", s.handleScan)
 	mux.HandleFunc("/api/scan/cancel", s.handleCancel)
+	mux.HandleFunc("/api/osint", s.handleOSINT)
 	mux.HandleFunc("/api/export", s.handleExport)
 	mux.HandleFunc("/api/heartbeat", s.handleHeartbeat)
 	mux.HandleFunc("/api/window-closed", s.handleWindowClosed)
@@ -314,7 +326,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	// Normalize space-separated Nmap-style target lists into comma-separated tokens
 	normTarget := strings.Join(strings.Fields(strings.ReplaceAll(req.Target, ",", " ")), ",")
 	resolvedTargets, err := netscope.ResolveTargets(r.Context(), normTarget, netscope.ResolveOptions{
-		ResolveDNS: req.ResolveDNS,
+		ResolveDNS: req.ResolveDNS || req.OSINT,
 		MaxHosts:   netscope.DefaultMaxHosts,
 	})
 	if err != nil {
@@ -407,6 +419,9 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		Banner:      req.Banner,
 		TLS:         req.TLS,
 		HTTP:        req.HTTP,
+		Vuln:        req.Vuln,
+		CVEOnline:   req.CVEOnline,
+		OSINT:       req.OSINT,
 		OnProgress: func(ev scanner.ProgressEvent) {
 			sendEvent(map[string]any{
 				"type":    "progress",
@@ -431,6 +446,46 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		"type":       "complete",
 		"report":     rep,
 		"nmapOutput": report.FormatNmap(rep, false),
+	})
+}
+
+func (s *Server) handleOSINT(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	var req osintRequest
+	if err := decodeJSONBody(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	q := strings.TrimSpace(req.Query)
+	if q == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing OSINT target domain or IP"})
+		return
+	}
+	if req.ActiveWeb && !req.Authorized && q != "127.0.0.1" && q != "::1" && !strings.EqualFold(q, "localhost") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "active web surface inspection requires explicit authorization checkbox",
+		})
+		return
+	}
+	timeout := 6 * time.Second
+	if req.TimeoutMs >= 1000 && req.TimeoutMs <= 20000 {
+		timeout = time.Duration(req.TimeoutMs) * time.Millisecond
+	}
+
+	oRep, err := osint.Run(r.Context(), q, osint.Options{
+		Timeout:   timeout,
+		ActiveWeb: req.ActiveWeb,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"osint":       oRep,
+		"tableOutput": report.FormatOSINTTable(oRep, false),
 	})
 }
 
